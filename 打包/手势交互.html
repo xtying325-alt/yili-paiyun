@@ -1,0 +1,2427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>神秘占卜 · 麻将要境 · 梅兰竹菊</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Noto+Serif+SC:wght@300;600&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; background: #030014; overflow: hidden; font-family: 'Noto Serif SC', serif; }
+        canvas { display: block; }
+        .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        
+        #video-container { 
+            position: fixed; bottom: 20px; right: 20px; width: 25vw; height: 18.75vw;
+            max-width: 240px; max-height: 180px; border-radius: 16px; overflow: hidden; 
+            border: 2px solid #8b5cf6; z-index: 100; transform: scaleX(-1); 
+            box-shadow: 0 0 30px rgba(139, 92, 246, 0.4); 
+        }
+
+        .yang-line { width: 80px; height: 10px; background: #fff; margin: 4px 0; box-shadow: 0 0 10px #8b5cf6; border-radius: 2px; }
+        .yin-line { width: 80px; height: 10px; display: flex; justify-content: space-between; margin: 4px 0; }
+        .yin-line div { width: 35px; height: 10px; background: #fff; box-shadow: 0 0 10px #8b5cf6; border-radius: 2px; }
+        
+        @keyframes float-ui { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        .animate-float-ui { animation: float-ui 4s ease-in-out infinite; }
+
+        /* 连接线样式 - 增长线段 */
+        .connector-line {
+            position: absolute; height: 1px; background: linear-gradient(90deg, #8b5cf6, transparent);
+            width: 0; opacity: 0; transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .connector-line.right { left: 100%; background: linear-gradient(90deg, #8b5cf6, transparent); transform-origin: left; }
+        .connector-line.left { right: 100%; background: linear-gradient(-90deg, #8b5cf6, transparent); transform-origin: right; }
+
+        /* 牌占位符样式 - 完全透明，图片居中完整显示 */
+        .tile-box {
+            position: absolute; width: 90px; height: 120px;
+            background: transparent !important; 
+            border: none !important;
+            border-radius: 8px;
+            opacity: 0; transition: all 0.6s ease;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; pointer-events: none;
+            overflow: hidden;
+        }
+        .tile-box:hover { 
+            border-color: #a78bfa; 
+            background: transparent !important; 
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.6); 
+        }
+        
+        /* 爻位专用距离 */
+        .tile-box.pos-0.right { left: 180px; } .tile-box.pos-0.left { right: 180px; }
+        .tile-box.pos-1.right { left: 160px; } .tile-box.pos-1.left { right: 160px; }
+        .tile-box.pos-2.right { left: 350px; } .tile-box.pos-2.left { right: 350px; }
+        .tile-box.pos-3.right { left: 350px; } .tile-box.pos-3.left { right: 350px; }
+        .tile-box.pos-4.right { left: 190px; } .tile-box.pos-4.left { right: 190px; }
+        .tile-box.pos-5.right { left: 170px; } .tile-box.pos-5.left { right: 170px; }
+
+        .tile-box::after {
+            content: attr(data-tip);
+            position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%) translateY(10px);
+            padding: 8px 12px; background: rgba(15, 10, 30, 0.95); border: 1px solid rgba(139, 92, 246, 0.4);
+            border-radius: 8px; color: #ddd; font-size: 12px; white-space: nowrap;
+            opacity: 0; pointer-events: none; transition: all 0.3s ease; z-index: 200;
+            backdrop-filter: blur(5px); box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        }
+        .tile-box:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        .step-1-active .connector-line.pos-0 { width: 180px; opacity: 1; }
+        .step-1-active .connector-line.pos-1 { width: 180px; opacity: 1; }
+        .step-1-active .connector-line.pos-2 { width: 350px; opacity: 1; }
+        .step-1-active .connector-line.pos-3 { width: 350px; opacity: 1; }
+        .step-1-active .connector-line.pos-4 { width: 180px; opacity: 1; }
+        .step-1-active .connector-line.pos-5 { width: 180px; opacity: 1; }
+        .step-1-active .tile-box { opacity: 1; pointer-events: auto; }
+
+        #panel-story, #panel-advice { opacity: 0; transition: all 0.8s ease; pointer-events: none; }
+        .step-2-active #panel-story { opacity: 1; pointer-events: auto; }
+        .step-2-active #panel-advice { opacity: 1; pointer-events: auto; }
+        .step-2-active #gua-visual-container { opacity: 0.6; }
+
+        /* 牌韵最后一屏返回主页按钮，仅在研读阶段显示 */
+        #mahjong-return-home {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 210;
+            padding: 0.6rem 1.5rem;
+            border-radius: 9999px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(15, 15, 30, 0.65);
+            backdrop-filter: blur(14px);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.75rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: all 0.4s ease;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .step-2-active #mahjong-return-home {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        #mahjong-return-home:hover {
+            border-color: rgba(255, 255, 255, 0.25);
+            color: #fff;
+            background: rgba(30, 30, 60, 0.9);
+            transform: translateY(-2px);
+        }
+
+        #view-control-hint {
+            position: fixed; top: 20px; right: 20px; z-index: 100;
+            background: rgba(0, 0, 0, 0.7); padding: 10px 15px; border-radius: 8px;
+            border: 1px solid rgba(139, 92, 246, 0.5); backdrop-filter: blur(5px);
+            max-width: 250px; font-size: 12px; line-height: 1.5;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        #view-control-hint h3 { color: #8b5cf6; margin-bottom: 8px; font-size: 14px; font-weight: bold; }
+        #view-control-hint ul { list-style: none; padding: 0; margin: 0; }
+        #view-control-hint li { margin-bottom: 5px; display: flex; align-items: center; }
+        #view-control-hint .icon { margin-right: 8px; color: #a78bfa; }
+
+        #view-indicator {
+            position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%);
+            z-index: 100; background: rgba(0, 0, 0, 0.5); padding: 8px 16px;
+            border-radius: 20px; backdrop-filter: blur(5px); border: 1px solid rgba(139, 92, 246, 0.3);
+            font-size: 12px; color: #a78bfa; white-space: nowrap;
+            transition: opacity 0.3s ease;
+        }
+        
+        #particle-hint {
+            position: fixed; bottom: 20px; left: 20px; z-index: 100;
+            background: rgba(0, 0, 0, 0.5); padding: 8px 12px; border-radius: 8px;
+            border: 1px solid rgba(139, 92, 246, 0.3); backdrop-filter: blur(5px);
+            font-size: 11px; color: #a78bfa; max-width: 200px;
+        }
+        
+        #cam-container {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 150px; height: 112px; z-index: 5;
+            border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 8px; overflow: hidden;
+            background: #000; transform: scaleX(-1); opacity: 0.4;
+            transition: opacity 0.3s;
+        }
+        #cam-container:hover { opacity: 0.8; }
+        #cam-video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.2; }
+        #output-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 6; }
+
+        /* ---------- 麻将粒子背景画布 (置于模态框底层) ---------- */
+        #mahjong-particle-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            pointer-events: none;
+            z-index: 1;
+        }
+        /* 模态框无背景，完全透明，让粒子透出，面板保留玻璃效果 */
+        #gua-modal {
+            background: transparent !important;
+            backdrop-filter: none !important;
+        }
+        /* 确保左右面板和中心容器在粒子之上 */
+        #gua-modal .absolute, #gua-visual-container {
+            z-index: 2;
+        }
+
+        /* ========== 从文件二移植的弹窗样式 ========== */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(12px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+        
+        .modal-content {
+            background: rgba(15, 7, 32, 0.85);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 24px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 85vh;
+            overflow-y: auto;
+            position: relative;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transform: translateY(30px);
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .modal-overlay.active .modal-content { transform: translateY(0); }
+        
+        .text-line { opacity: 0; transform: translateY(20px); margin-bottom: 1.5rem; }
+        .text-line.active { opacity: 1; transform: translateY(0); transition: opacity 0.8s ease, transform 0.8s ease; }
+
+        /* 用户要求的字体修改 */
+        #culture-modal-mahjong h2,
+        #culture-modal-mahjong .inline-flex,
+        #culture-modal-mahjong h3 {
+            font-family: '阿里妈妈东方大楷', 'Cinzel', serif !important;
+        }
+        #culture-modal-mahjong p,
+        #culture-modal-mahjong li {
+            font-family: '也字工厂江月令行楷', 'Inter', sans-serif !important;
+        }
+
+        .highlight {
+            background: rgba(255, 235, 100, 0.4);
+            padding: 0 2px;
+            border-radius: 2px;
+            color: inherit;
+        }
+    </style>
+</head>
+<body class="text-white">
+
+    <!-- 加载层 -->
+    <div id="loading-overlay" class="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-[#030014]">
+        <div class="relative w-24 h-24 mb-6" id="loader-icon">
+            <div class="absolute inset-0 border-4 border-purple-500/20 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+        <h2 id="loading-text" class="text-2xl font-serif text-purple-300 animate-pulse text-center px-4">正在初始化144张卡牌...</h2>
+        <div id="progress-container-bar" class="w-64 h-2 bg-gray-800 rounded-full mt-4 overflow-hidden">
+            <div id="progress-inner" class="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+        <div id="debug-info" class="mt-4 text-purple-300 text-sm hidden">
+            <div id="back-load-status" class="mb-1"></div>
+            <div id="front-load-status" class="mb-1"></div>
+        </div>
+        <p id="error-hint" class="hidden mt-4 text-red-400 text-sm max-w-xs text-center">无法调用摄像头。请检查是否被其他应用占用。</p>
+    </div>
+
+    <!-- 摄像头容器 -->
+    <div id="cam-container" class="hidden">
+        <video id="cam-video" playsinline muted autoplay></video>
+        <canvas id="output-canvas"></canvas>
+    </div>
+
+    <!-- 粒子效果提示 -->
+    <div id="particle-hint">
+        <div class="flex items-center gap-2 mb-1">
+            <iconify-icon icon="mdi:particle" style="color: #8b5cf6;"></iconify-icon>
+            <span class="font-bold">粒子背景控制</span>
+        </div>
+        <div class="text-xs">捏合手势控制粒子缩放：张开时放大，捏合时收缩</div>
+    </div>
+
+    <!-- 视角控制提示 -->
+    <div id="view-control-hint">
+        <h3>手势控制</h3>
+        <ul>
+            <li><span class="icon">👐</span> 手掌张开左右移动：旋转视角</li>
+            <li><span class="icon">👌</span> 手掌捏合：抓取卡牌 & 控制粒子</li>
+            <li><span class="icon">← →</span> 键盘左右键：旋转视角</li>
+            <li><span class="icon">R</span> 键盘R键：重置视角</li>
+        </ul>
+    </div>
+
+    <!-- 视角指示器 -->
+    <div id="view-indicator" style="opacity: 0;">
+        当前视角: <span id="current-angle">0°</span> / 360°
+    </div>
+
+    <!-- 顶部进度与提示 -->
+    <div id="ui-layer" class="fixed inset-0 z-50 pointer-events-none flex flex-col items-center">
+        <div class="mt-12 flex gap-4"><div id="progress-container" class="flex gap-3"></div></div>
+        <div id="status-msg" class="mt-8 px-8 py-3 glass rounded-full text-purple-200 text-sm tracking-widest animate-float-ui text-center">
+            手掌张开左右移动旋转视角，捏合抓取卡牌并控制粒子
+        </div>
+        <div id="draw-result" class="absolute inset-0 flex items-center justify-center opacity-0 scale-50 transition-all duration-700 hidden"></div>
+    </div>
+
+    <!-- 卦象模态框 (完全透明背景，内部增加麻将粒子画布) -->
+    <div id="gua-modal" class="fixed inset-0 z-[150] hidden flex items-center justify-center transition-all duration-1000">
+        <!-- 麻将粒子背景画布 (位于模态框最底层) -->
+        <canvas id="mahjong-particle-bg"></canvas>
+        
+        <div class="relative w-full max-w-screen-xl px-10 flex items-center justify-center">
+            <!-- 左侧板块：启示故事 -->
+            <div id="panel-story" class="absolute left-10 w-80 -translate-x-12">
+                <div class="glass p-8 rounded-3xl border-l-4 border-l-purple-500 shadow-2xl">
+                    <h4 class="text-purple-400 text-xs tracking-widest mb-4 flex items-center gap-2">
+                        <iconify-icon icon="lucide:book-open"></iconify-icon> 卦象启示
+                    </h4>
+                    <div id="gua-story" class="text-purple-100/90 leading-relaxed italic text-lg"></div>
+                </div>
+            </div>
+
+            <!-- 正中：卦象图示 -->
+            <div id="gua-visual-container" class="flex flex-col items-center z-10 transition-all duration-700">
+                <h3 id="gua-name" class="text-5xl font-bold text-white mb-10 tracking-[0.3em] transition-all"></h3>
+                
+                <div id="gua-visual" class="relative flex flex-col gap-6 p-10 glass rounded-[2.5rem] border-purple-500/30 shadow-2xl">
+                    <!-- 爻及连接线在此动态生成 -->
+                </div>
+
+                <!-- 交互按钮 -->
+                <div class="mt-12 flex flex-col items-center gap-6">
+                    <button id="btn-study" onclick="handleStudyClick()" class="px-16 py-4 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-400/50 rounded-full text-xl font-bold backdrop-blur-md transition-all active:scale-95 pointer-events-auto">
+                        研读此卦
+                    </button>
+                    <button onclick="resetGame()" class="text-gray-500 hover:text-white text-sm tracking-widest pointer-events-auto transition-colors">
+                        再次抓取
+                    </button>
+                </div>
+            </div>
+
+            <!-- 右侧板块：当下鼓励 -->
+            <div id="panel-advice" class="absolute right-10 w-80 translate-x-12">
+                <div class="glass p-8 rounded-3xl border-l-4 border-l-emerald-500 shadow-2xl">
+                    <h4 class="text-emerald-400 text-xs tracking-widest mb-4 flex items-center gap-2">
+                        <iconify-icon icon="lucide:sparkles"></iconify-icon> 当下鼓励
+                    </h4>
+                    <div id="gua-advice" class="text-emerald-50 text-xl font-medium leading-relaxed"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 麻将纹样弹窗（正文已填充） -->
+    <div id="culture-modal-mahjong" class="modal-overlay">
+        <div class="modal-content p-8 md:p-12">
+            <div class="absolute top-4 right-4">
+                <button onclick="closeMahjongCultureModal()" class="p-2 rounded-full hover:bg-white/10 transition-all duration-300">
+                    <iconify-icon icon="lucide:x" width="24" class="text-purple-300"></iconify-icon>
+                </button>
+            </div>
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-300 text-sm tracking-widest uppercase mb-4">
+                    <span class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>麻将纹样
+                </div>
+                <h2 class="text-3xl md:text-4xl font-serif text-white mb-4 tracking-tight">藏于牌间的天地人文</h2>
+                <div class="h-px w-24 mx-auto bg-gradient-to-r from-transparent via-purple-500 to-transparent"></div>
+            </div>
+            <!-- 正文区域：万字、筒子、条子设计理念 -->
+            <div id="mahjong-culture-text" class="space-y-4 text-lg leading-relaxed text-white/80 font-serif-sc">
+                <h3 class="text-line text-xl font-serif text-purple-300 mt-2">万字牌 · 人</h3>
+                <p class="text-line">万子牌以文字为核心，直接关联“人”的社会、文化、伦理。设计理念：以绳结纹为底纹，中国结纹中心对应“卍”。万字改用篆体，笔画缠绕如结，数字“一至九万”的篆字嵌入结纹中心。万字源于对“卍”梵文的汉字写法，是对大海和云天吉祥象征的意思，也被玄奘等人译为佛教的“德”。</p>
+                
+                <h3 class="text-line text-xl font-serif text-purple-300 mt-6">筒子牌 · 地</h3>
+                <p class="text-line">筒子牌的圆形正好对应八卦图，融合壮锦“福田纹+井字纹”，圆内嵌入井田纹，古代土地划分的田字格，象征大地的承载与孕育；福田纹寓意五谷丰登，丰饶和成长的祝愿，搭配回形钻石纹，代表硕果累累，也表达“一生丰足，衣食无忧”。对应“地”，取山川、大地、承载之纹。</p>
+                
+                <h3 class="text-line text-xl font-serif text-purple-300 mt-6">条子牌 · 天</h3>
+                <p class="text-line">条子牌对应“天”，取天象、虚空、流转之纹。底纹选取云纹，表天空云层的流动，云纹突出空灵、飘逸、循环往复的“天”之特质，契合神秘感。“条”结合绳子造型（起源于马吊的绳索，是穿起铜钱的绳索），中间部分融入星宿、日月星辰装饰。</p>
+            </div>
+            <div class="mt-10 pt-8 border-t border-white/10 flex justify-end">
+                <button onclick="closeMahjongCultureModal()" class="px-8 py-3 bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-500 hover:to-purple-700 rounded-full font-medium tracking-wide transition-all duration-300 shadow-lg shadow-purple-900/30 flex items-center gap-3">
+                    关闭
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <script>
+        // ==================== 原第一个文件的完整内容（已增加梅兰竹菊） ====================
+        // 麻将牌正面图片URL映射 (已添加梅兰竹菊)
+        const TILE_IMAGE_URLS = {
+            // 万
+            '1万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/LA3o/1617X1617/1yiwan.png/webp',
+            '2万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Jbxt/1617X1617/2erwan.png/webp',
+            '3万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Y7Ga/1617X1617/3sanwan.png/webp',
+            '4万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/L1GO/1617X1617/4siwan.png/webp',
+            '5万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Jcg8/1617X1617/5wuwan.png/webp',
+            '6万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/sVlO/1617X1617/6liuwan.png/webp',
+            '7万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/K9Jp/1617X1617/7qiwan.png/webp',
+            '8万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/O34i/1617X1617/8bawan.png/webp',
+            '9万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/mnuE/1617X1617/9jiuwan.png/webp',
+            
+            // 筒
+            '1筒': 'https://img.heliar.top/file/1773305145270_yitong.png',
+            '2筒': 'https://img.heliar.top/file/1773305133525_ertong.png',
+            '3筒': 'https://img.heliar.top/file/1773305134605_santong.png',
+            '4筒': 'https://img.heliar.top/file/1773305141315_sitong.png',
+            '5筒': 'https://img.heliar.top/file/1773305141030_wutong.png',
+            '6筒': 'https://img.heliar.top/file/1773305137550_liutong.png',
+            '7筒': 'https://img.heliar.top/file/1773305136133_qitong.png',
+            '8筒': 'https://img.heliar.top/file/1773305140201_batong.png',
+            '9筒': 'https://img.heliar.top/file/1773305136176_jiutong.png',
+            
+            // 条
+            '1条': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/lLtX/1617X1617/1.1.1yitiao.png/webp',
+            '2条': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/v143/1617X1617/1.1.2ertiao.png/webp',
+            '3条': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/axzI/1617X1617/1.1.3santiao.png/webp',
+            '4条': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/3Yjm/1617X1617/1.1.4sitiao.png/webp',
+            '5条': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/zG2b/1617X1617/1.1.5wutiao.png/webp',
+            '6条': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/TQUG/1617X1617/1.1.6liutiao.png/webp',
+            '7条': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/wjl3/1617X1617/1.1.7qitiao.png/webp',
+            '8条': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/of5D/1617X1617/1.1.8batiao.png/webp',
+            '9条': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/t3xL/1617X1617/1.1.9jiutiao.png/webp',
+            
+            // 特殊牌 (原有)
+            '东': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/eEyJ/1617X1617/dong.png/webp',
+            '南': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/Nuvb/1617X1617/nan.png/webp',
+            '西': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/AJXN/1617X1617/xi.png/webp',
+            '北': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/bZfC/1617X1617/bei.png/webp',
+            '中': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/Af0S/1617X1617/zhong.png/webp',
+            '发': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/I1nJ/1617X1617/fa.png/webp',
+            '白': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/4c1D/1617X1617/bai.png/webp',
+            '春': 'https://img.heliar.top/file/1773305141216_1chun.png',
+            '夏': 'https://img.heliar.top/file/1773305159003_1xia.png',
+            '秋': 'https://img.heliar.top/file/1773305144141_1qiu.png',
+            '冬': 'https://img.heliar.top/file/1773305149387_1dongji.png',
+            // ========== 新增梅兰竹菊 ==========
+            '梅': 'https://img.heliar.top/file/1773305145895_1mei.png',
+            '兰': 'https://img.heliar.top/file/1773305151176_1lan.png',
+            '竹': 'https://img.heliar.top/file/1773305158334_1zhu.png',
+            '菊': 'https://img.heliar.top/file/1773305142900_1ju.png'
+        };
+
+        const CONFIG = { 
+            baseProb: 0.85, 
+            maxTiles: 144, 
+            suits: ['筒', '条', '万'], 
+            // ========== 新增梅兰竹菊到特殊牌数组 ==========
+            special: ['东','南','西','北','中','发','白','春','夏','秋','冬','梅','兰','竹','菊'],
+            // 背面图片
+            backImage: 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Izw6/1617X1617/%E6%9C%AA%E6%A0%87%E9%A2%98-1_%E7%94%BB%E6%9D%BF_1_%E5%89%AF%E6%9C%AC_38.png/webp',
+            // ============= 新增视角控制配置 =============
+            enableHandRotation: true, // 启用手势控制视角旋转
+            rotationSensitivity: 1.0, // 旋转灵敏度
+            maxRotationAngle: Math.PI * 2, // 360度视角范围
+            defaultRotation: 0, // 初始旋转角度
+            // ============= 粒子背景配置 =============
+            particleCount: 200000, 
+            rangeX: 130,           
+            rangeZ: 150,           
+            lineCount: 450,        
+            colorRiver: new THREE.Color('#a0e0ff'), // 浅蓝河流
+            colorMtBase: new THREE.Color('#001144'), // 深蓝底座
+            colorMtTop: new THREE.Color('#0088ff')   // 亮蓝顶峰
+        };
+        
+        const TILES = { base: [], special: [] };
+        function initTiles() {
+            CONFIG.suits.forEach(s => { 
+                for(let i=1; i<=9; i++) { 
+                    for(let k=0; k<4; k++) {
+                        const tileName = `${i}${s}`;
+                        // 直接从映射表中获取图片URL
+                        const imageUrl = TILE_IMAGE_URLS[tileName] || CONFIG.backImage;
+                        
+                        TILES.base.push({ 
+                            name: tileName, 
+                            val: i, 
+                            type: s,
+                            imageUrl: imageUrl // 存储图片URL
+                        }); 
+                    }
+                } 
+            });
+            
+            CONFIG.special.forEach(s => { 
+                for(let k=0; k<4; k++) {
+                    // 直接从映射表中获取图片URL
+                    const imageUrl = TILE_IMAGE_URLS[s] || CONFIG.backImage;
+                    
+                    TILES.special.push({ 
+                        name: s, 
+                        type: '特殊',
+                        imageUrl: imageUrl // 存储图片URL
+                    }); 
+                }
+            });
+        }
+        initTiles();
+
+        let scene, camera, renderer, tileMeshes = [];
+        let texturesLoaded = false;
+        let textureCache = {}; // 纹理缓存
+        
+        // ============= 新增：视角控制变量 =============
+        let cardContainer = new THREE.Group(); // 所有卡牌的容器，用于整体旋转
+        let targetRotation = 0; // 目标旋转角度
+        let isRotatingView = false; // 是否正在旋转视角
+        let lastHandX = 0; // 上次手部X坐标
+        let rotationStartX = 0; // 旋转开始时的X坐标
+        // ===========================================
+        
+        // ============= 粒子背景变量 =============
+        let particleSystem;
+        let particleTargetScale = 0.3;
+        let particleCurrentScale = 0.3;
+        let particleHandActive = false;
+        let particleClock = new THREE.Clock();
+        // ======================================
+        
+        // 纹理加载器
+        const textureLoader = new THREE.TextureLoader();
+        
+        // 显示调试信息
+        function showDebugInfo() {
+            document.getElementById('debug-info').classList.remove('hidden');
+        }
+        
+        // 更新调试状态
+        function updateDebugStatus(elementId, message) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.textContent = message;
+            }
+        }
+        
+        // 更新视角指示器
+        function updateViewIndicator() {
+            let currentAngle = Math.round(cardContainer.rotation.y * 180 / Math.PI);
+            // 规范化角度到0-360度
+            while (currentAngle < 0) currentAngle += 360;
+            while (currentAngle >= 360) currentAngle -= 360;
+            
+            document.getElementById('current-angle').textContent = `${currentAngle}°`;
+            
+            // 显示指示器
+            const indicator = document.getElementById('view-indicator');
+            indicator.style.opacity = '1';
+            
+            // 3秒后淡出
+            clearTimeout(window.indicatorTimeout);
+            window.indicatorTimeout = setTimeout(() => {
+                indicator.style.opacity = '0';
+            }, 3000);
+        }
+        
+        // ============= 完全重写的纹理加载函数 =============
+        async function loadAllTextures() {
+            return new Promise((resolve) => {
+                showDebugInfo();
+                
+                // 收集所有需要加载的纹理URL
+                const texturesToLoad = {};
+                
+                // 1. 背面纹理
+                texturesToLoad['back'] = CONFIG.backImage;
+                
+                // 2. 收集所有正面纹理（去重）
+                const allTiles = [...TILES.base, ...TILES.special];
+                const uniqueTiles = [];
+                const seen = new Set();
+                
+                allTiles.forEach(tile => {
+                    if (!seen.has(tile.name)) {
+                        seen.add(tile.name);
+                        uniqueTiles.push({
+                            name: tile.name,
+                            url: tile.imageUrl
+                        });
+                    }
+                });
+                
+                console.log(`需要加载的纹理总数: ${1 + uniqueTiles.length} (1个背面 + ${uniqueTiles.length}个正面)`);
+                
+                let loadedCount = 0;
+                const totalToLoad = 1 + uniqueTiles.length;
+                
+                // 更新进度条
+                function updateProgress() {
+                    loadedCount++;
+                    const percent = Math.floor((loadedCount / totalToLoad) * 100);
+                    document.getElementById('progress-inner').style.width = `${percent}%`;
+                    
+                    // 更新加载文本
+                    if (loadedCount === 1) {
+                        document.getElementById('loading-text').innerText = "背面纹理加载完成";
+                        updateDebugStatus('back-load-status', '背面纹理加载成功 ✓');
+                    } else if (loadedCount <= totalToLoad) {
+                        document.getElementById('loading-text').innerText = `正在加载正面纹理... (${loadedCount-1}/${uniqueTiles.length})`;
+                        updateDebugStatus('front-load-status', `正面纹理: ${loadedCount-1}/${uniqueTiles.length}`);
+                    }
+                    
+                    if (loadedCount === totalToLoad) {
+                        console.log('所有纹理加载完成!');
+                        document.getElementById('loading-text').innerText = "所有纹理加载完成，正在初始化场景...";
+                        updateDebugStatus('front-load-status', `所有正面纹理加载完成 ✓`);
+                        resolve();
+                    }
+                }
+                
+                // 3. 加载背面纹理
+                document.getElementById('loading-text').innerText = "正在加载背面纹理...";
+                updateDebugStatus('back-load-status', `尝试加载: ${CONFIG.backImage}`);
+                
+                textureLoader.load(
+                    CONFIG.backImage,
+                    (texture) => {
+                        console.log('背面纹理加载成功:', texture);
+                        // 正确设置纹理参数
+                        texture.encoding = THREE.sRGBEncoding;
+                        texture.flipY = true; // 使用Three.js默认值
+                        texture.minFilter = THREE.LinearFilter;
+                        texture.magFilter = THREE.LinearFilter;
+                        texture.needsUpdate = true;
+                        
+                        textureCache['back'] = texture;
+                        updateProgress();
+                    },
+                    undefined,
+                    (error) => {
+                        console.error('背面纹理加载失败:', error);
+                        updateDebugStatus('back-load-status', `背面加载失败: ${error.message || '未知错误'}`);
+                        
+                        // 创建占位纹理
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 768;
+                        canvas.height = 1024;
+                        const ctx = canvas.getContext('2d');
+                        
+                        // 绘制渐变背景
+                        const gradient = ctx.createLinearGradient(0, 0, 768, 1024);
+                        gradient.addColorStop(0, '#4c1d95');
+                        gradient.addColorStop(1, '#7c3aed');
+                        ctx.fillStyle = gradient;
+                        ctx.fillRect(0, 0, 768, 1024);
+                        
+                        // 添加文字
+                        ctx.fillStyle = '#ffffff';
+                        ctx.font = 'bold 60px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText('卡牌背面', 384, 512);
+                        
+                        const placeholderTexture = new THREE.CanvasTexture(canvas);
+                        placeholderTexture.encoding = THREE.sRGBEncoding;
+                        placeholderTexture.flipY = true;
+                        placeholderTexture.needsUpdate = true;
+                        
+                        textureCache['back'] = placeholderTexture;
+                        updateProgress();
+                    }
+                );
+                
+                // 4. 加载所有正面纹理
+                uniqueTiles.forEach(tile => {
+                    // 记录尝试加载的URL
+                    console.log(`尝试加载正面纹理: ${tile.name} -> ${tile.url}`);
+                    
+                    // 创建一个新的Image对象来测试图片是否能加载
+                    const testImg = new Image();
+                    
+                    // 先测试图片是否能加载
+                    testImg.onload = function() {
+                        console.log(`图片 ${tile.name} 可以通过Image对象加载，URL有效`);
+                        
+                        // 图片有效，使用Three.js纹理加载器加载
+                        textureLoader.load(
+                            tile.url,
+                            (texture) => {
+                                console.log(`正面纹理加载成功: ${tile.name}`);
+                                // 正确设置纹理参数
+                                texture.encoding = THREE.sRGBEncoding;
+                                texture.flipY = true; // 使用Three.js默认值
+                                texture.minFilter = THREE.LinearFilter;
+                                texture.magFilter = THREE.LinearFilter;
+                                texture.needsUpdate = true;
+                                
+                                textureCache[tile.name] = texture;
+                                updateProgress();
+                            },
+                            undefined,
+                            (error) => {
+                                console.error(`Three.js纹理加载失败但Image对象成功: ${tile.url}`, error);
+                                // 创建占位纹理
+                                createPlaceholderTexture(tile.name);
+                                updateProgress();
+                            }
+                        );
+                    };
+                    
+                    testImg.onerror = function() {
+                        console.error(`图片 ${tile.name} 无法通过Image对象加载，URL可能无效或跨域问题`);
+                        updateDebugStatus('front-load-status', `${tile.name}图片加载失败，URL可能无效`);
+                        
+                        // 对于春夏秋冬梅兰竹菊，使用背面纹理？但已全面用占位，不用特殊处理
+                        createPlaceholderTexture(tile.name);
+                        updateProgress();
+                    };
+                    
+                    // 设置跨域属性并开始加载
+                    testImg.crossOrigin = 'anonymous';
+                    testImg.src = tile.url;
+                    
+                    // 如果图片已经缓存，可能不会触发onload，所以设置一个超时
+                    setTimeout(() => {
+                        if (testImg.complete && !textureCache[tile.name]) {
+                            console.log(`图片 ${tile.name} 可能已缓存，尝试直接加载`);
+                            // 图片已缓存，尝试直接加载纹理
+                            textureLoader.load(
+                                tile.url,
+                                (texture) => {
+                                    console.log(`正面纹理加载成功(缓存): ${tile.name}`);
+                                    texture.encoding = THREE.sRGBEncoding;
+                                    texture.flipY = true;
+                                    texture.minFilter = THREE.LinearFilter;
+                                    texture.magFilter = THREE.LinearFilter;
+                                    texture.needsUpdate = true;
+                                    
+                                    textureCache[tile.name] = texture;
+                                    if (!textureCache[tile.name]) {
+                                        updateProgress();
+                                    }
+                                },
+                                undefined,
+                                (error) => {
+                                    console.error(`缓存图片纹理加载失败: ${tile.url}`, error);
+                                    if (!textureCache[tile.name]) {
+                                        createPlaceholderTexture(tile.name);
+                                        updateProgress();
+                                    }
+                                }
+                            );
+                        }
+                    }, 500);
+                });
+                
+                // 创建占位纹理的函数
+                function createPlaceholderTexture(tileName) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 768;
+                    canvas.height = 1024;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // 绘制更接近真实麻将牌的外观
+                    // 背景色
+                    ctx.fillStyle = '#e6b87a'; // 麻将牌的米黄色
+                    ctx.fillRect(0, 0, 768, 1024);
+                    
+                    // 边框
+                    ctx.strokeStyle = '#8b4513';
+                    ctx.lineWidth = 20;
+                    ctx.strokeRect(10, 10, 748, 1004);
+                    
+                    // 圆角
+                    ctx.fillStyle = '#8b4513';
+                    ctx.beginPath();
+                    ctx.arc(50, 50, 30, 0, Math.PI * 2);
+                    ctx.arc(718, 50, 30, 0, Math.PI * 2);
+                    ctx.arc(50, 974, 30, 0, Math.PI * 2);
+                    ctx.arc(718, 974, 30, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // 添加文字 - 更大更醒目
+                    ctx.fillStyle = '#000000';
+                    ctx.font = 'bold 120px Arial, "Noto Serif SC"';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(tileName, 384, 512);
+                    
+                    // 添加小字说明
+                    ctx.fillStyle = '#8b4513';
+                    ctx.font = 'bold 40px Arial';
+                    ctx.fillText('纹理加载中', 384, 700);
+                    
+                    const placeholderTexture = new THREE.CanvasTexture(canvas);
+                    placeholderTexture.encoding = THREE.sRGBEncoding;
+                    placeholderTexture.flipY = true;
+                    placeholderTexture.needsUpdate = true;
+                    
+                    textureCache[tileName] = placeholderTexture;
+                }
+            });
+        }
+
+        // ============= 创建粒子背景 =============
+        function createParticleBackground() {
+            const geometry = new THREE.BufferGeometry();
+            const positions = [];
+            const randoms = []; 
+            const lineIndices = []; 
+
+            const pointsPerLine = Math.floor(CONFIG.particleCount / CONFIG.lineCount);
+
+            for (let i = 0; i < CONFIG.lineCount; i++) {
+                const z = (i / CONFIG.lineCount - 0.5) * CONFIG.rangeZ;
+                for (let j = 0; j < pointsPerLine; j++) {
+                    const x = (j / pointsPerLine - 0.5) * CONFIG.rangeX;
+                    positions.push(x, 0, z);
+                    // aRandom.z 用于控制是否为白色点缀粒子
+                    randoms.push(Math.random(), Math.random(), Math.random());
+                    lineIndices.push(i / CONFIG.lineCount);
+                }
+            }
+
+            const dustCount = 30000; // 白色星尘数量
+            for(let i=0; i<dustCount; i++) {
+                positions.push((Math.random()-0.5)*CONFIG.rangeX, Math.random()*40, (Math.random()-0.5)*CONFIG.rangeZ);
+                randoms.push(Math.random(), Math.random(), Math.random());
+                lineIndices.push(-1.0);
+            }
+
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('aRandom', new THREE.Float32BufferAttribute(randoms, 3));
+            geometry.setAttribute('aLine', new THREE.Float32BufferAttribute(lineIndices, 1));
+
+            // Shader
+            const vertexShader = `
+                uniform float uTime;
+                uniform float uScale;
+                attribute vec3 aRandom;
+                attribute float aLine;
+                varying float vType; 
+                varying float vHeight;
+                varying float vIntensity;
+                varying float vIsWhite;
+
+                float getNoise(vec2 p) {
+                    float res = 0.0;
+                    float amp = 1.0;
+                    float freq = 1.0;
+                    for(int i=0; i<3; i++) {
+                        res += (sin(p.x * freq) * cos(p.y * freq)) * amp;
+                        amp *= 0.5;
+                        freq *= 2.0;
+                    }
+                    return res;
+                }
+
+                void main() {
+                    vec3 pos = position;
+                    vIsWhite = 0.0;
+                    
+                    // 处理星尘
+                    if (aLine < -0.5) {
+                        vType = 3.0;
+                        float t = uTime * 0.1 + aRandom.x * 20.0;
+                        pos.y += sin(t) * 10.0;
+                        pos.x += cos(t * 0.5) * 5.0;
+                        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                        gl_Position = projectionMatrix * mvPosition;
+                        gl_PointSize = (1.2 + uScale) * (25.0 / -mvPosition.z);
+                        return;
+                    }
+
+                    float riverCurve = sin(pos.z * 0.06) * 15.0 + cos(pos.z * 0.12) * 5.0;
+                    float distToRiver = abs(pos.x - riverCurve);
+                    float height = 0.0;
+                    float pointSize = 0.0;
+
+                    if (distToRiver < 4.0) {
+                        vType = 0.0; // 河流
+                        height = sin(pos.z * 0.5 + uTime * 2.0) * 0.4;
+                        pointSize = 1.6 * (1.2 - distToRiver / 4.0);
+                        vIntensity = 1.0 + sin(uTime * 3.0 + aRandom.y * 10.0) * 0.5;
+                    } else if (distToRiver < 12.0 - uScale * 4.0) {
+                        vType = 2.0; // 间隙
+                        pointSize = 0.0;
+                    } else {
+                        vType = 1.0; // 山脉
+                        float mDist = distToRiver - 8.0;
+                        float n = getNoise(vec2(pos.x * 0.1, pos.z * 0.05 + uTime * 0.05));
+                        height = abs(n) * 18.0 * (mDist * 0.1);
+                        height = clamp(height, 0.0, 45.0) * (0.5 + uScale * 2.0);
+                        
+                        pointSize = 0.8 + (height * 0.05);
+                        
+                        // 10% 概率成为白色点缀
+                        if (aRandom.z > 0.9) {
+                            vIsWhite = 1.0;
+                            pointSize *= 1.5;
+                        }
+
+                        float lineHighlight = fract(aLine * 40.0);
+                        if(lineHighlight > 0.93) {
+                            pointSize *= 2.0;
+                            vIntensity = 1.8;
+                        } else {
+                            vIntensity = 0.6;
+                        }
+                    }
+                    pos.y = height;
+                    vHeight = height;
+                    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    gl_PointSize = pointSize * (45.0 / -mvPosition.z);
+                }
+            `;
+
+            const fragmentShader = `
+                uniform vec3 uColorRiver;
+                uniform vec3 uColorMtBase;
+                uniform vec3 uColorMtTop;
+                varying float vType;
+                varying float vHeight;
+                varying float vIntensity;
+                varying float vIsWhite;
+
+                void main() {
+                    if (vType > 1.5 && vType < 2.5) discard;
+                    vec2 uv = gl_PointCoord.xy - 0.5;
+                    if (length(uv) > 0.5) discard;
+                    float alpha = 1.0 - smoothstep(0.1, 0.5, length(uv));
+                    vec3 color = vec3(0.0);
+
+                    if (vType < 0.5) {
+                        // 河流：浅蓝色
+                        color = uColorRiver * vIntensity;
+                        color += vec3(0.0, 0.2, 0.5);
+                    } else if (vType > 2.5) {
+                        // 星尘：纯白色点缀
+                        color = vec3(1.0, 1.0, 1.0);
+                        alpha *= (0.4 + sin(vIntensity * 5.0) * 0.2);
+                    } else {
+                        // 山脉
+                        if (vIsWhite > 0.5) {
+                            color = vec3(1.0, 1.0, 1.0); // 白色点缀
+                            alpha *= 0.8;
+                        } else {
+                            float h = clamp(vHeight / 30.0, 0.0, 1.0);
+                            color = mix(uColorMtBase, uColorMtTop, h);
+                            color *= vIntensity;
+                            // 山脊发光偏青色
+                            if(vIntensity > 1.5) color += vec3(0.0, 0.3, 0.6);
+                        }
+                    }
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `;
+
+            const uniforms = {
+                uTime: { value: 0 },
+                uScale: { value: particleCurrentScale },
+                uColorRiver: { value: CONFIG.colorRiver },
+                uColorMtBase: { value: CONFIG.colorMtBase },
+                uColorMtTop: { value: CONFIG.colorMtTop }
+            };
+
+            const material = new THREE.ShaderMaterial({
+                vertexShader, fragmentShader, uniforms,
+                transparent: true, depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+
+            particleSystem = new THREE.Points(geometry, material);
+            
+            // 调整粒子系统的位置和缩放，使其成为背景
+            particleSystem.scale.set(2, 2, 2);
+            particleSystem.position.set(0, -20, -100);
+            
+            scene.add(particleSystem);
+        }
+
+        function initScene() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color('#000510');
+            scene.fog = new THREE.FogExp2(0x000510, 0.012);
+            
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.outputEncoding = THREE.sRGBEncoding; // 确保颜色正确
+            document.body.appendChild(renderer.domElement);
+            
+            // 创建粒子背景
+            createParticleBackground();
+            
+            // 创建卡牌容器并添加到场景
+            scene.add(cardContainer);
+            
+            // 光照
+            scene.add(new THREE.AmbientLight(0x4c1d95, 1.5));
+            const point = new THREE.PointLight(0x8b5cf6, 5, 250);
+            point.position.set(0, 20, 30);
+            scene.add(point);
+            
+            // 创建平面卡牌 - 调整为3:4比例 (宽度1.5，高度2.0)
+            const geometry = new THREE.PlaneGeometry(1.5, 2.0);
+            
+            // ============= 关键：所有纹理都已经加载完成，直接从缓存获取 =============
+            const backTexture = textureCache['back'];
+            
+            // 创建背面材质
+            const backMaterial = new THREE.MeshStandardMaterial({ 
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 1,
+                color: new THREE.Color(0xffffff)
+            });
+            
+            if (backTexture) {
+                backMaterial.map = backTexture;
+                backMaterial.needsUpdate = true;
+                console.log('使用已加载的背面纹理创建材质');
+            } else {
+                console.log('使用默认紫色创建背面材质');
+                backMaterial.color = new THREE.Color(0x4c1d95);
+            }
+            
+            // ============= 创建144张卡牌，优化布局，减少交叠，更加错落有致 =============
+            const totalCards = 144;
+            const radius = 25; // 圆柱半径
+            
+            // 创建10层的圆柱面布局，每层数量略有不同
+            const layers = 10;
+            
+            // 计算每层卡牌数量（不均匀分布，更错落）
+            const layerCardCounts = [];
+            let remainingCards = totalCards;
+            
+            for (let i = 0; i < layers; i++) {
+                // 中间层多一些卡牌，上下层少一些
+                let layerCount;
+                if (i < 3 || i > layers - 4) { // 上下几层
+                    layerCount = Math.floor(totalCards / layers * 0.7);
+                } else { // 中间层
+                    layerCount = Math.floor(totalCards / layers * 1.3);
+                }
+                
+                // 确保最后一层能分配剩余卡牌
+                if (i === layers - 1) {
+                    layerCount = remainingCards;
+                } else {
+                    layerCount = Math.min(layerCount, remainingCards);
+                    remainingCards -= layerCount;
+                }
+                
+                layerCardCounts.push(layerCount);
+            }
+            
+            // 调整剩余卡牌分配
+            if (remainingCards > 0) {
+                // 将剩余卡牌均匀分配到中间几层
+                for (let i = Math.floor(layers/2) - 2; i < Math.floor(layers/2) + 2 && remainingCards > 0; i++) {
+                    if (i >= 0 && i < layers) {
+                        layerCardCounts[i]++;
+                        remainingCards--;
+                    }
+                }
+            }
+            
+            console.log('每层卡牌数量:', layerCardCounts, '总计:', layerCardCounts.reduce((a, b) => a + b, 0));
+            
+            // 创建卡牌
+            let cardIndex = 0;
+            
+            for (let layer = 0; layer < layers; layer++) {
+                const verticalPos = (layer / (layers - 1) - 0.5) * 24; // 增加垂直范围到24
+                const cardsThisLayer = layerCardCounts[layer];
+                
+                for (let i = 0; i < cardsThisLayer; i++) {
+                    if (cardIndex >= totalCards) break;
+                    
+                    // 在360度范围内均匀分布，但添加随机偏移避免对齐
+                    const baseAngle = (i / cardsThisLayer) * Math.PI * 2;
+                    // 添加随机角度偏移 (±10度)
+                    const angleOffset = (Math.random() - 0.5) * Math.PI / 18; // ±10度
+                    const angle = baseAngle + angleOffset;
+                    
+                    // 计算卡牌在圆柱面上的位置
+                    // 添加轻微的半径偏移，使卡牌不完全在同一圆柱面上
+                    const radiusOffset = (Math.random() - 0.5) * 2.5; // ±2.5单位
+                    const x = Math.sin(angle) * (radius + radiusOffset);
+                    const z = Math.cos(angle) * (radius + radiusOffset);
+                    
+                    // 添加垂直随机偏移，但避免相邻卡牌重叠
+                    const verticalOffset = (Math.random() - 0.5) * 1.8; // 增加垂直偏移范围
+                    const y = verticalPos + verticalOffset;
+                    
+                    // 获取麻将牌数据
+                    const tilePool = Math.random() < CONFIG.baseProb ? TILES.base : TILES.special;
+                    const tile = tilePool[Math.floor(Math.random() * tilePool.length)];
+                    
+                    // 关键：所有正面纹理都已加载完成，直接从缓存获取
+                    // 优先使用正面纹理，如果没有则使用背面纹理
+                    const frontTexture = textureCache[tile.name] || textureCache['back'];
+                    
+                    // 创建正面材质 - 但初始时不可见
+                    const frontMaterial = new THREE.MeshStandardMaterial({ 
+                        side: THREE.DoubleSide,
+                        transparent: true,
+                        opacity: 0, // 初始透明度为0，不可见
+                        color: new THREE.Color(0xffffff)
+                    });
+                    
+                    // 设置正面纹理
+                    if (frontTexture) {
+                        frontMaterial.map = frontTexture;
+                        frontMaterial.needsUpdate = true;
+                        console.log(`卡牌 ${tile.name} 使用纹理: ${textureCache[tile.name] ? '正面纹理' : '背面纹理'}`);
+                    } else {
+                        console.error(`卡牌 ${tile.name} 没有可用的纹理！`);
+                    }
+                    
+                    // 为每张卡牌创建独立背面材质（避免共享材质导致“全部消失/不可见”）
+                    const cardBackMaterial = backMaterial.clone();
+                    cardBackMaterial.map = backMaterial.map || null;
+                    cardBackMaterial.needsUpdate = true;
+
+                    // 创建卡牌组
+                    const cardGroup = new THREE.Group();
+                    
+                    // 创建正面平面 - 初始时不可见
+                    const frontMesh = new THREE.Mesh(geometry, frontMaterial);
+                    frontMesh.userData = { isFront: true };
+                    
+                    // 创建背面平面 - 初始时可见
+                    const backMesh = new THREE.Mesh(geometry, cardBackMaterial);
+                    backMesh.userData = { isFront: false };
+                    
+                    cardGroup.add(frontMesh);
+                    cardGroup.add(backMesh);
+                    
+                    // 设置位置 - 以摄像头为中心
+                    cardGroup.position.set(x, y, z);
+                    
+                    // 让卡牌朝向摄像头中心 (0,0,0)
+                    cardGroup.lookAt(0, y, 0);
+                    
+                    // 添加随机旋转，增加错落感
+                    cardGroup.rotation.x += (Math.random() - 0.5) * 0.15; // 增加X轴旋转范围
+                    cardGroup.rotation.y += (Math.random() - 0.5) * 0.1;  // 添加Y轴旋转
+                    cardGroup.rotation.z += (Math.random() - 0.5) * 0.2; // 增加Z轴旋转范围
+                    
+                    // 随机缩放，增加立体感
+                    const scale = 0.65 + Math.random() * 0.5; // 缩小缩放范围
+                    cardGroup.scale.set(scale, scale, scale);
+                    
+                    // 保存原始位置和动画数据
+                    cardGroup.userData = { 
+                        originalPos: cardGroup.position.clone(), 
+                        originalRot: cardGroup.rotation.clone(),
+                        originalScale: cardGroup.scale.clone(),
+                        offset: Math.random() * Math.PI * 2, 
+                        speed: 0.1 + Math.random() * 0.2,
+                        radius: radius + radiusOffset,
+                        angle: angle,
+                        verticalPos: verticalPos,
+                        isFlipped: false,
+                        tile: tile, // 保存麻将牌数据
+                        frontMaterial: frontMaterial, // 保存正面材质
+                        backMaterial: cardBackMaterial, // 保存背面材质（独立实例）
+                        frontMesh: frontMesh, // 保存正面网格
+                        backMesh: backMesh, // 保存背面网格
+                        isFlying: false, // 是否正在飞行
+                        pauseStartTime: 0 // 停顿开始时间
+                    };
+                    
+                    // 添加到卡牌容器
+                    cardContainer.add(cardGroup);
+                    tileMeshes.push(cardGroup);
+                    
+                    cardIndex++;
+                }
+            }
+            
+            console.log(`已创建 ${tileMeshes.length} 张卡牌，所有纹理都已加载完成！`);
+            
+            // 输出纹理缓存的内容以供调试
+            console.log('纹理缓存内容:', Object.keys(textureCache));
+            
+            // 设置相机位置在圆柱中心
+            camera.position.set(0, 0, 0);
+            camera.lookAt(0, 0, -1);
+            
+            // 初始化卡牌容器旋转
+            cardContainer.rotation.y = CONFIG.defaultRotation;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // 更新粒子背景
+            const t = particleClock.getElapsedTime();
+            if (!particleHandActive) {
+                particleTargetScale = 0.3 + Math.sin(t * 0.4) * 0.15;
+            }
+            // 提高插值速度，使粒子缩放更快跟随手势
+            particleCurrentScale += (particleTargetScale - particleCurrentScale) * 0.15;
+            
+            if (particleSystem && particleSystem.material && particleSystem.material.uniforms) {
+                particleSystem.material.uniforms.uTime.value = t;
+                particleSystem.material.uniforms.uScale.value = particleCurrentScale;
+                particleSystem.rotation.y = Math.sin(t * 0.03) * 0.05;
+            }
+            
+            // 平滑旋转视角
+            if (Math.abs(cardContainer.rotation.y - targetRotation) > 0.001) {
+                cardContainer.rotation.y += (targetRotation - cardContainer.rotation.y) * 0.1;
+                updateViewIndicator();
+            }
+            
+            // 更新卡牌浮动动画 - 保持圆柱面布局，添加垂直浮动效果
+            const time = Date.now() * 0.001;
+            
+            tileMeshes.forEach(m => { 
+                if (m.userData && m.userData.originalPos && !m.userData.isFlying) {
+                    const speed = m.userData.speed;
+                    const offset = m.userData.offset;
+                    
+                    // 垂直浮动效果 - 减小浮动幅度，避免重叠
+                    const floatY = Math.sin(time * speed + offset) * 0.3;
+                    
+                    // 轻微的水平旋转，使卡牌有动态感
+                    const rotateZ = Math.sin(time * 0.3 + offset) * 0.015;
+                    
+                    // 更新位置和旋转
+                    m.position.y = m.userData.originalPos.y + floatY;
+                    m.rotation.z = m.userData.originalRot.z + rotateZ;
+                    
+                    // 让卡牌始终朝向摄像头中心 (0,0,0)
+                    m.lookAt(0, m.position.y, 0);
+                    
+                    // 保持原始X和Y旋转
+                    m.rotation.x = m.userData.originalRot.x;
+                    m.rotation.y = m.userData.originalRot.y;
+                }
+                
+                // 检查是否需要开始翻转动画
+                if (m.userData && m.userData.isFlying && m.userData.pauseStartTime > 0) {
+                    const pauseDuration = Date.now() - m.userData.pauseStartTime;
+                    if (pauseDuration > 1000) { // 停顿2秒后开始翻转
+                        m.userData.pauseStartTime = 0;
+                        startFlipAnimation(m);
+                    }
+                }
+            });
+            
+            TWEEN.update();
+            renderer.render(scene, camera);
+        }
+
+        const videoElement = document.getElementById('cam-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        // 修改：currentYao不仅要存储阴阳值，还要存储对应的卡牌对象
+        let currentYao = []; // 现在每个元素是 { yinYang: 0或1, tile: 卡牌对象 }
+        let isGrabbing = false;
+        let lastGrabTime = 0;
+        let currentStudyStep = 0;
+
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // ============= 手势识别逻辑，添加更严谨的捏合检测 =============
+        // 新增变量：捏合状态持续时间跟踪
+        let pinchStartTime = 0;
+        let pinchDetected = false;
+        const PINCH_THRESHOLD = 0.04; // 捏合阈值（更小，需要更精确的捏合）
+        const PINCH_MIN_DURATION = 300; // 捏合需要持续的最小时间（毫秒）
+        
+        // 用于绘制手部标记
+        function drawConnectors(ctx, landmarks, connections, style) {
+            ctx.strokeStyle = style.color;
+            ctx.lineWidth = style.lineWidth || 2;
+            ctx.beginPath();
+            connections.forEach(([start, end]) => {
+                const startPoint = landmarks[start];
+                const endPoint = landmarks[end];
+                ctx.moveTo(startPoint.x * canvasElement.width, startPoint.y * canvasElement.height);
+                ctx.lineTo(endPoint.x * canvasElement.width, endPoint.y * canvasElement.height);
+            });
+            ctx.stroke();
+        }
+        
+        const HAND_CONNECTIONS = [
+            [0,1],[1,2],[2,3],[3,4],
+            [0,5],[5,6],[6,7],[7,8],
+            [5,9],[9,10],[10,11],[11,12],
+            [9,13],[13,14],[14,15],[15,16],
+            [13,17],[17,18],[18,19],[19,20],[0,17]
+        ];
+
+        // ========== 新增：模态框状态标志 ==========
+        let isModalOpen = false;
+        
+        hands.onResults(results => {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            const dot = document.getElementById('hand-dot'); // 可能不存在，但后续加判断
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const marks = results.multiHandLandmarks[0];
+                const thumb = marks[4], index = marks[8], palm = marks[0]; // 手掌根部
+                
+                // 计算拇指和食指距离
+                const dist = Math.sqrt(Math.pow(thumb.x - index.x, 2) + Math.pow(thumb.y - index.y, 2));
+                
+                // 绘制手部标记
+                drawConnectors(canvasCtx, marks, HAND_CONNECTIONS, {color: '#00ffff', lineWidth: 2});
+                
+                // 显示手部点
+                if (dot) {
+                    dot.style.opacity = 1;
+                    dot.style.left = (1 - index.x) * 100 + "%";
+                    dot.style.top = index.y * 100 + "%";
+                }
+                
+                // 更新鼠标坐标用于射线检测
+                mouse.x = -(index.x * 2 - 1);
+                mouse.y = -(index.y * 2 - 1);
+                
+                // ========== 交互控制仅在非模态框时生效 ==========
+                if (!isModalOpen) {
+                    // ============= 关键修改：立即响应捏合手势，扩大粒子缩放范围 =============
+                    if (dist < PINCH_THRESHOLD) { 
+                        // 立即计算捏合强度并更新粒子缩放（扩大范围至 0.1 ~ 1.2）
+                        const pinchStrength = 1.0 - (dist / PINCH_THRESHOLD);
+                        particleTargetScale = 0.1 + pinchStrength * 1.1;
+                        particleHandActive = true;
+
+                        // 原有的捏合持续时间检测（用于抓取卡牌）保持不变
+                        if (!pinchDetected) {
+                            if (pinchStartTime === 0) {
+                                pinchStartTime = Date.now();
+                            } else if (Date.now() - pinchStartTime > PINCH_MIN_DURATION) {
+                                pinchDetected = true;
+                                if (dot) {
+                                    dot.style.backgroundColor = "#a855f7";
+                                }
+                                
+                                // 只有在确认捏合后，才能抓取卡牌
+                                if (!isGrabbing && Date.now() - lastGrabTime > 2500) {
+                                    performAutoGrab();
+                                }
+                                isGrabbing = true;
+                            }
+                        } else {
+                            if (dot) {
+                                dot.style.backgroundColor = "#a855f7";
+                            }
+                            // 粒子缩放已在上面更新，无需重复
+                        }
+                    } else { 
+                        // 没有捏合手势
+                        pinchStartTime = 0;
+                        pinchDetected = false;
+                        isGrabbing = false; 
+                        particleHandActive = false;
+                        
+                        if (dot) {
+                            dot.style.backgroundColor = "#facc15";
+                        }
+                        
+                        if (CONFIG.enableHandRotation) {
+                            // 获取手掌根部位置
+                            const palmX = palm.x;
+                            
+                            if (!isRotatingView) {
+                                // 开始旋转
+                                isRotatingView = true;
+                                rotationStartX = palmX;
+                                lastHandX = palmX;
+                            } else {
+                                // 计算移动距离并转换为旋转角度
+                                const deltaX = (palmX - lastHandX) * CONFIG.rotationSensitivity;
+                                const rotationDelta = deltaX * Math.PI * 2;
+                                
+                                // 更新目标旋转角度
+                                targetRotation += rotationDelta;
+                                
+                                // 360度无限制旋转
+                                lastHandX = palmX;
+                            }
+                        }
+                    }
+                } else {
+                    // 模态框打开时，可以重置手部点颜色（可选）
+                    if (dot) dot.style.backgroundColor = "#facc15";
+                }
+            } else { 
+                // 没有检测到手
+                if (dot) {
+                    dot.style.opacity = 0;
+                }
+                if (!isModalOpen) {
+                    isRotatingView = false;
+                    pinchStartTime = 0;
+                    pinchDetected = false;
+                    particleHandActive = false;
+                }
+            }
+            
+            canvasCtx.restore();
+        });
+
+        function performAutoGrab() {
+            lastGrabTime = Date.now();
+            raycaster.setFromCamera(mouse, camera);
+            
+            // 将卡牌容器的旋转考虑在内
+            const intersects = raycaster.intersectObjects(tileMeshes.map(mesh => mesh));
+            
+            let target;
+            if (intersects.length > 0) {
+                target = intersects[0].object.parent; // 获取卡牌组
+            } else {
+                // 如果没有检测到交集，随机选择一个卡牌
+                target = tileMeshes[Math.floor(Math.random() * tileMeshes.length)];
+            }
+            
+            if (target) {
+                console.log(`抓取到卡牌: ${target.userData.tile.name}`);
+                console.log(`正面纹理已加载:`, textureCache[target.userData.tile.name] ? '是' : '否');
+                
+                // 标记卡牌正在飞行
+                target.userData.isFlying = true;
+                
+                // 将卡牌从容器中临时移出，以便独立控制
+                cardContainer.remove(target);
+                scene.add(target);
+                
+                // ============= 关键修改：飞来时背面平行于屏幕，停顿2秒后翻转到正面平行于屏幕 =============
+                // 1. 计算卡牌飞到屏幕中心的位置
+                const screenCenterDistance = 15; // 距离摄像头15个单位
+                const screenCenterPos = new THREE.Vector3(0, 0, -screenCenterDistance);
+                
+                // 2. 瞬间将卡牌移动到起始位置（稍微远一点）
+                const startPos = new THREE.Vector3(0, 0, -30);
+                target.position.copy(startPos);
+                
+                // 3. 关键修改：设置卡牌旋转为(0, Math.PI, 0) - 背面平行于屏幕
+                target.rotation.set(0, Math.PI, 0);
+                
+                // 4. 确保背面材质完全可见，正面材质透明
+                if (target.userData.backMaterial) {
+                    target.userData.backMaterial.opacity = 1;
+                    target.userData.backMaterial.needsUpdate = true;
+                }
+                if (target.userData.frontMaterial) {
+                    target.userData.frontMaterial.opacity = 0;
+                    target.userData.frontMaterial.needsUpdate = true;
+                }
+                
+                // 5. 飞来动画（位置和缩放）
+                new TWEEN.Tween(target.position)
+                    .to(screenCenterPos, 1000)
+                    .easing(TWEEN.Easing.Back.Out)
+                    .onComplete(() => {
+                        // 飞来动画完成后，记录停顿开始时间
+                        target.userData.pauseStartTime = Date.now();
+                    })
+                    .start();
+                    
+                new TWEEN.Tween(target.scale)
+                    .to({ x: 2.5, y: 2.5, z: 2.5 }, 1000)
+                    .easing(TWEEN.Easing.Back.Out)
+                    .start();
+            }
+        }
+
+        // ============= 翻转动画函数 =============
+        function startFlipAnimation(target) {
+            console.log(`开始翻转卡牌 ${target.userData.tile.name}`);
+            
+            // 检查正面材质和纹理
+            if (target.userData.frontMaterial) {
+                console.log(`正面材质状态:`, {
+                    hasMap: !!target.userData.frontMaterial.map,
+                    mapType: target.userData.frontMaterial.map ? target.userData.frontMaterial.map.type : '无',
+                    opacity: target.userData.frontMaterial.opacity
+                });
+                
+                // 如果正面材质没有纹理，尝试重新设置
+                if (!target.userData.frontMaterial.map) {
+                    console.log(`正面材质缺少纹理，尝试从缓存重新设置`);
+                    const frontTexture = textureCache[target.userData.tile.name];
+                    if (frontTexture) {
+                        target.userData.frontMaterial.map = frontTexture;
+                        target.userData.frontMaterial.needsUpdate = true;
+                        console.log(`重新设置了 ${target.userData.tile.name} 的正面纹理`);
+                    } else {
+                        console.error(`纹理缓存中没有 ${target.userData.tile.name} 的纹理`);
+                    }
+                }
+                
+                target.userData.frontMaterial.opacity = 0;
+                target.userData.frontMaterial.needsUpdate = true;
+            }
+            
+            // 确保背面材质完全可见
+            if (target.userData.backMaterial) {
+                target.userData.backMaterial.opacity = 1;
+                target.userData.backMaterial.needsUpdate = true;
+            }
+            
+            // ============= 关键：从背面(0, Math.PI, 0)翻转到正面(0, 0, 0) =============
+            const startYRotation = target.rotation.y; // 应该是Math.PI
+            const endYRotation = 0; // 目标旋转角度为0
+            
+            new TWEEN.Tween({ rotationY: startYRotation })
+                .to({ rotationY: endYRotation }, 1200)
+                .onUpdate((obj) => {
+                    // 只更新Y轴旋转（绕自身竖轴翻转）
+                    target.rotation.y = obj.rotationY;
+                    
+                    // 计算翻转进度 (0到1)
+                    const progress = (startYRotation - obj.rotationY) / Math.PI;
+                    
+                    // 当翻转到一半时（90度），开始切换透明度
+                    if (progress > 0.5) {
+                        // 后半段：背面逐渐透明，正面逐渐显现
+                        const backOpacity = 1 - (progress - 0.5) * 2;
+                        const frontOpacity = (progress - 0.5) * 2;
+                        
+                        if (target.userData.backMaterial) {
+                            target.userData.backMaterial.opacity = Math.max(0, backOpacity);
+                            target.userData.backMaterial.needsUpdate = true;
+                        }
+                        if (target.userData.frontMaterial) {
+                            target.userData.frontMaterial.opacity = Math.min(1, frontOpacity);
+                            target.userData.frontMaterial.needsUpdate = true;
+                        }
+                    } else {
+                        // 前半段：背面保持可见，正面保持透明
+                        if (target.userData.backMaterial) {
+                            target.userData.backMaterial.opacity = 1;
+                            target.userData.backMaterial.needsUpdate = true;
+                        }
+                        if (target.userData.frontMaterial) {
+                            target.userData.frontMaterial.opacity = 0;
+                            target.userData.frontMaterial.needsUpdate = true;
+                        }
+                    }
+                })
+                .onComplete(() => {
+                    target.userData.isFlipped = true;
+                    
+                    // 翻转完成后，确保正面完全可见，背面完全透明
+                    if (target.userData.frontMaterial) {
+                        target.userData.frontMaterial.opacity = 1;
+                        target.userData.frontMaterial.needsUpdate = true;
+                        console.log(`翻转完成，正面材质透明度: ${target.userData.frontMaterial.opacity}, 纹理:`, target.userData.frontMaterial.map ? '已设置' : '未设置');
+                    }
+                    if (target.userData.backMaterial) {
+                        target.userData.backMaterial.opacity = 0;
+                        target.userData.backMaterial.needsUpdate = true;
+                    }
+                    
+                    // 显示卡牌名称提示
+                    const drawn = target.userData.tile;
+                    updateStatus(`抓到 ${drawn.name}`, "text-green-400 font-bold");
+                    
+                    // 等待2秒后开始返回动画
+                    setTimeout(() => {
+                        returnCardToPosition(target);
+                    }, 2000);
+                })
+                .start();
+        }
+
+        // ============= 返回卡牌到原位置函数 =============
+        function returnCardToPosition(mesh) {
+            // 保存当前位置和旋转作为动画起点
+            const startPos = mesh.position.clone();
+            const startRot = mesh.rotation.clone();
+            const startScale = mesh.scale.clone();
+            
+            // 获取目标位置和旋转
+            const targetPos = mesh.userData.originalPos.clone();
+            const targetRot = mesh.userData.originalRot.clone();
+            const targetScale = mesh.userData.originalScale.clone();
+            
+            // ============= 关键：先翻转回背面（绕Y轴旋转180度回到背面） =============
+            const startYRotation = mesh.rotation.y; // 当前是0（正面）
+            const backYRotation = Math.PI; // 绕Y轴旋转180度回到背面
+            
+            new TWEEN.Tween({ rotationY: startYRotation })
+                .to({ rotationY: backYRotation }, 800)
+                .onUpdate((obj) => {
+                    mesh.rotation.y = obj.rotationY;
+                    
+                    // 同时调整透明度
+                    const progress = (obj.rotationY - startYRotation) / Math.PI;
+                    
+                    if (progress > 0.5) {
+                        // 后半段：正面变透明，背面变可见
+                        const frontOpacity = 1 - (progress - 0.5) * 2;
+                        const backOpacity = (progress - 0.5) * 2;
+                        
+                        if (mesh.userData.frontMaterial) {
+                            mesh.userData.frontMaterial.opacity = Math.max(0, frontOpacity);
+                            mesh.userData.frontMaterial.needsUpdate = true;
+                        }
+                        if (mesh.userData.backMaterial) {
+                            mesh.userData.backMaterial.opacity = Math.min(1, backOpacity);
+                            mesh.userData.backMaterial.needsUpdate = true;
+                        }
+                    } else {
+                        // 前半段：正面可见，背面透明
+                        if (mesh.userData.frontMaterial) {
+                            mesh.userData.frontMaterial.opacity = 1;
+                            mesh.userData.frontMaterial.needsUpdate = true;
+                        }
+                        if (mesh.userData.backMaterial) {
+                            mesh.userData.backMaterial.opacity = 0;
+                            mesh.userData.backMaterial.needsUpdate = true;
+                        }
+                    }
+                })
+                .onComplete(() => {
+                    // 翻转完成后，确保回到背面状态
+                    mesh.userData.isFlipped = false;
+                    if (mesh.userData.backMaterial) {
+                        mesh.userData.backMaterial.opacity = 1;
+                        mesh.userData.backMaterial.needsUpdate = true;
+                    }
+                    if (mesh.userData.frontMaterial) {
+                        mesh.userData.frontMaterial.opacity = 0;
+                        mesh.userData.frontMaterial.needsUpdate = true;
+                    }
+                    
+                    // 然后飞回原位置
+                    new TWEEN.Tween(mesh.position)
+                        .to({ x: targetPos.x, y: targetPos.y, z: targetPos.z }, 1000)
+                        .easing(TWEEN.Easing.Cubic.InOut)
+                        .start();
+                        
+                    new TWEEN.Tween(mesh.scale)
+                        .to(targetScale, 1000)
+                        .easing(TWEEN.Easing.Cubic.InOut)
+                        .start();
+                        
+                    // 返回时也需要恢复原始旋转（包括X、Y、Z轴）
+                    new TWEEN.Tween(mesh.rotation)
+                        .to({ 
+                            x: targetRot.x, 
+                            y: targetRot.y, 
+                            z: targetRot.z 
+                        }, 1000)
+                        .easing(TWEEN.Easing.Cubic.InOut)
+                        .onComplete(() => {
+                            // 将卡牌重新添加到容器中
+                            scene.remove(mesh);
+                            cardContainer.add(mesh);
+                            
+                            // 重置飞行状态
+                            mesh.userData.isFlying = false;
+                            mesh.userData.pauseStartTime = 0;
+                            
+                            // 处理抽牌结果逻辑 - 现在存储卡牌对象
+                            const tile = mesh.userData.tile;
+                            if (tile.type === '特殊') { 
+                                updateStatus(`"${tile.name}" 出现，进度重置，请重新抓取`, "text-red-400"); 
+                                currentYao = []; 
+                            } else { 
+                                // ============= 关键修改：存储卡牌对象，不仅仅是阴阳值 =============
+                                currentYao.push({
+                                    yinYang: (tile.val % 2 !== 0) ? 1 : 0,
+                                    tile: tile
+                                }); 
+                                if (currentYao.length === 6) {
+                                    calculateGua(); 
+                                } else {
+                                    updateStatus(`已获 ${currentYao[currentYao.length-1].yinYang?'阳':'阴'} 爻，需再寻 ${6-currentYao.length} 枚`, "text-purple-300 font-bold"); 
+                                }
+                            }
+                            updateProgressBar();
+                        })
+                        .start();
+                })
+                .start();
+        }
+
+        function updateProgressBar() {
+            const container = document.getElementById('progress-container');
+            container.innerHTML = "";
+            for(let i=0; i<6; i++) {
+                const slot = document.createElement('div');
+                slot.className = "w-14 h-14 glass rounded-xl flex items-center justify-center border-purple-500/20";
+                if(currentYao[i] !== undefined) {
+                    // 注意：现在currentYao[i]是一个对象，我们取yinYang属性
+                    const yinYang = currentYao[i].yinYang;
+                    slot.innerHTML = yinYang === 1 ? '<div class="yang-line !w-10 !h-1.5"></div>' : '<div class="yin-line !w-10 !h-1.5"><div class="!w-4"></div><div class="!w-4"></div></div>';
+                } else {
+                    slot.innerHTML = '<span class="text-[10px] opacity-30">待演</span>';
+                }
+                container.appendChild(slot);
+            }
+        }
+
+        function updateStatus(msg, cls) {
+            const el = document.getElementById('status-msg');
+            el.innerText = msg;
+            el.className = `mt-8 px-8 py-3 glass rounded-full text-sm tracking-widest animate-float-ui ${cls}`;
+        }
+
+        // ============= 64卦映射表 =============
+        const GUAS_MAP = {
+            "111111": { name: "乾卦", story: "夜幕低垂时，苍穹深处藏着一条潜龙，它沉眠于星云流转的静谧里，不急于舒展鳞甲。待晨曦划破天际，它先探首于晨雾弥漫的田垄，再腾跃于霞光漫天的苍穹，最终敛翅于云巅11知晓极致的翱翔后，当留一份谦和与沉稳。这是天道轮回的静谧节律，是刚健之中藏收敛的神秘平衡。", advice: "你此刻的沉潜，皆是苍穹为你铺就的云程伏笔，不必焦虑，待风起时，自有霞光为你引路，把握时机，坚守正道，让你的生命在刚健与智慧的指引下，绽放出绚丽光彩。" },
+            "000000": { name: "坤卦", story: "暮色中的厚土，静默承载着第一片寒霜的轻吻，它知晓霜落之后便是坚冰，却依旧以温柔接纳万物。母马踏着霜华缓步前行，蹄印深浅间，藏着顺应时序的智慧；收紧的囊袋里，装着不事张扬的静谧，不渴求赞誉，亦不畏惧沉寂，这是大地最深厚的神秘馈赠11柔德可载万物，静可纳千光。", advice: "你今日的温柔与隐忍，皆是厚土般的德行积淀，那些不为人知的沉寂，终将滋养出属于你的繁花遍野。" },
+            "010001": { name: "屯卦", story: "春雷初醒时，山涧的冻土下藏着一丝新芽，上方是湍急的流水（险），身旁是震彻的雷声（动），它在艰险中悄然扎根，不急于舒展嫩叶。它知晓初生的艰难，便以静默对抗风雨，在徘徊中凝聚力量，如同远古先民建国封侯般，步步为营筑牢根基，这是生命初始最纯粹的神秘韧性。", advice: "你此刻的艰难，是生命扎根的必经之路，不必急于求成，在静默中积蓄的力量，终将支撑你破岩而出。" },
+            "100010": { name: "蒙卦", story: "晨雾缭绕的山峦间，藏着一汪清冽的泉眼，泉水初涌时，混沌如蒙童，需借一缕晨光指引方向。有智者循着雾霭而来，以温柔的话语拨开混沌，如同细雨滋润干涸的心田，让蒙昧的种子在静谧中苏醒，这是智慧启蒙最神秘的过程11在迷雾中寻光，在静谧中觉醒。", advice: "你此刻的迷茫，是智慧觉醒的前兆，如同山雾终将散去，只要心怀寻光的执念，便会遇见照亮前路的微光。" },
+            "010111": { name: "需卦", story: "晴空之上，云絮缓缓汇聚，它们不疾不徐，在苍穹中勾勒出静谧的轮廓。远方的旅人知晓，降雨未至时，需在树荫下静默等候，不可贸然前行。云聚成雨的过程，是时序的神秘安排，是'待'的智慧11唯有耐心等候，才能迎来甘霖滋润心田。", advice: "你此刻的等待，不是停滞，而是为了迎接一场恰逢其时的甘霖，安心守候，时光自会为你送来惊喜。" },
+            "111010": { name: "讼卦", story: "狂风掠过水面，激起千层浪，浪涛相击，如同人与人之间的纷争。可风终会停歇，浪终会平息，水面终将回归静谧。远古的智者知晓，纷争无益，唯有以和为贵，方能让心灵如静水般安宁，这是人际相处最神秘的箴言11少一分争执，多一分静谧。", advice: "你此刻的纷争，不过是风过水面的涟漪，不必执着于对错，退一步的静谧，会让你遇见更广阔的天地。" },
+            "000010": { name: "师卦", story: "暮色中的大地，承载着一支纪律严明的军旅，他们步伐整齐，如同田垄间的麦浪，虽有刚健之气，却藏着守护的温情。德高望重的长者引领着他们，知晓出兵的意义不在于征战，而在于守护安宁。军旅前行的身影，在月光下勾勒出静谧的轮廓，这是责任与担当最神秘的模样。", advice: "你此刻的担当，如同军旅守护大地般坚定，不必畏惧肩头的重量，每一份坚守，都在守护属于你的静谧与安宁。" },
+            "010000": { name: "比卦", story: "山间的溪流，循着地势缓缓流淌，最终汇聚于厚土之上，它们相互依偎，如同人与人之间的亲近辅助。溪水潺潺，大地静默，二者同心，滋养出漫山遍野的繁花。这是人际相处的神秘韵律11以真诚为引，以正道为基，方能相伴同行。", advice: "你此刻的陪伴与被陪伴，都是水流归地般的自然缘分，珍惜这份同心的温暖，它会成为你前行路上的静谧力量。" },
+            "110111": { name: "小畜卦", story: "苍穹之上，密云汇聚，却未即刻降雨，它们在静谧中积蓄力量，等待最合适的时机。春风拂过大地，草木知晓，这是蓄力的时节，不必急于绽放。密云不雨的静谧，是力量积蓄的神秘过程，是'小蓄'而后'大成'的前奏。", advice: "你此刻的积累，如同密云蓄力般沉稳，不必着急绽放，待力量充盈时，自然会迎来属于你的'甘霖'。" },
+            "111011": { name: "履卦", story: "月光下的山岗，一只猛虎静卧，有人循着星光前行，轻踏过虎尾，却未被惊扰。他知晓，前行之路需心怀敬畏，步步谨慎，方能在险中求安。虎尾轻踏的静谧，是敬畏之心带来的神秘守护，是慎行而后致远的智慧。", advice: "你此刻的谨慎，不是怯懦，而是对前路的敬畏，心怀敬畏步步前行，每一步都会有静谧的守护相伴。" },
+            "000111": { name: "泰卦", story: "晨曦微露时，天空的阳气缓缓下沉，大地的阴气徐徐上升，天地交融，和风送暖，万物在静谧中蓬勃生长。田垄间的麦穗随风轻摇，溪水潺潺流淌，这是'泰'的境界11阴阳平衡，万物顺遂。天地交泰的静谧，是自然最神秘的馈赠，是顺遂之时的温柔提醒。", advice: "你此刻的顺遂，是天地交泰般的自然节律，珍惜这份安宁，在顺遂中保持沉稳，方能长久享这份静谧美好。" },
+            "111000": { name: "否卦", story: "暮色四合时，天空的阳气上升，大地的阴气下沉，天地隔绝，雾锁青山，万物陷入短暂的沉寂。可青山知晓，雾霭终会散去，天地终将再次交融；草木知晓，沉寂是为了积蓄力量，等待再次蓬勃。这是'否'的神秘韵律11绝境之中，藏着转机。", advice: "你此刻的沉寂，不过是雾锁青山的短暂时光，不必焦虑，坚守初心静静等待，天地自会交泰，雾散天晴。" },
+            "111101": { name: "同人卦", story: "夜幕降临时，天空的星火与地上的灯火交相辉映，天火同人，光明普照，不分彼此。旷野中的人们，循着光的指引相聚，没有隔阂，没有偏见，在静谧中达成共识。这是团结的神秘力量11以光明为引，以同心为基，方能共渡难关。", advice: "你此刻的孤独，只是尚未遇见同行的伙伴，心怀光明静静等候，终会有星光与你共照，温暖前行的路。" },
+            "101111": { name: "大有卦", story: "秋日的旷野，天空的阳光炽热，大地的果实饱满，火天大有，硕果盈枝。农夫在田间静默收割，脸上带着满足的微笑，却不骄不躁。这是'大有'的神秘境界11收获之时，仍需保持谦逊，方能长久拥有。", advice: "你此刻的收获，是时光与汗水的馈赠，带着谦逊之心接纳这份美好，静谧前行，会有更多硕果等待你采摘。" },
+            "000100": { name: "谦卦", story: "晨雾缭绕的大地，一座高山静静隐藏于厚土之下，不张扬，不显露，却滋养着漫山的草木。雾霭散去时，它依旧保持静谧，接纳阳光的照耀，也包容雨水的冲刷。这是谦逊的神秘力量11藏锋守拙，方能亨通久远。", advice: "你此刻的谦逊，是山隐厚土般的智慧，不必刻意彰显自己，静谧沉淀中，自会赢得岁月的温柔以待。" },
+            "001000": { name: "豫卦", story: "春雷初出，从大地深处奋起，震彻寰宇，却不喧嚣。草木在雷声中苏醒，花朵在静谧中绽放，万物都因这生机而喜乐。远古的先民知晓，真正的喜乐，不是狂欢，而是内心的安然，是与自然节律相融的静谧愉悦。", advice: "你此刻的喜乐，是内心与自然的同频共振，珍惜这份安然，在静谧的愉悦中前行，每一步都充满力量。" },
+            "011001": { name: "随卦", story: "沼泽之中，雷声隐隐，泽水循着雷声的韵律缓缓流动，顺势而行，不逆势而为。水草在泽水中静静生长，鱼虾在水中安然栖息，这是'随'的智慧11顺应时序，跟随正道，方能安然自在。", advice: "你此刻的跟随，不是盲从，而是顺势而为的智慧，顺着内心的正道前行，静谧之中，自会遇见美好。" },
+            "100110": { name: "蛊卦", story: "山风掠过山峦，吹散了陈旧的尘埃，唤醒了沉睡的草木。远古的先民知晓，当旧的秩序衰败时，需以静谧之心除旧布新，如同山风清理尘埃般，温和而坚定。这是变革的神秘力量11在静谧中破旧，在沉稳中立新。", advice: "你此刻的改变，是除旧布新的开始，不必畏惧未知，以静谧之心坚定前行，新的希望会在变革中滋生。" },
+            "000011": { name: "临卦", story: "沼泽之上，厚土覆盖，泽水浸润大地，无声无息，却滋养出漫山的生机。管理者如同泽水般，以温柔的方式浸润人心，不张扬，不压迫，让人心在静谧中归顺。这是'临'的智慧11以德化人，润物无声。", advice: "你此刻的影响，如同泽水浸润大地般温柔，不必刻意强求，做好自己，自然会以无声的力量感染他人。" },
+            "110000": { name: "观卦", story: "清风拂过大地，吹动草木，也映照出万物的本貌。远古的智者站在山岗上，静观风过草木的姿态，知晓万物的变化都有规律可循。这是'观'的神秘智慧11以静谧之心观察，方能洞察本质。", advice: "你此刻的静观，不是停滞，而是为了更好地洞察前路，保持内心的静谧，万物的规律自会呈现在你眼前。" },
+            "101001": { name: "噬嗑卦", story: "雷电交加，雷声震彻，电光照明，如同明辨是非的利剑，划破混沌。远古的先民知晓，当遇到阻碍时，需以严明之心明辨是非，如同雷电合章般，坚定而公正。这是决断的神秘力量11明辨是非，方能破除阻碍。", advice: "你此刻的决断，是明辨是非后的坚定，不必犹豫，相信自己的判断，静谧前行，阻碍终会被破除。" },
+            "100101": { name: "贲卦", story: "山脚下，火光点点，照亮了草木，也为大地增添了一抹文饰。可火光知晓，文饰不可过度，否则会掩盖大地的本真。这是'贲'的智慧11文饰有度，回归本真，方能保持静谧之美。", advice: "你此刻的修饰，是对美好的追求，但不必过度苛求，回归本真的自己，静谧之中，自会散发独特的光芒。" },
+            "100000": { name: "剥卦", story: "山岩之上，土层缓缓剥落，看似衰败，实则在为新的生长积蓄力量。草木在剥落的土层中静静扎根，等待春天的到来。这是'剥'的神秘韵律11衰败之中，藏着新生的希望，厚积方能薄发。", advice: "你此刻的失落，不过是成长中的'土层剥落'，不必气馁，静静扎根积蓄力量，新生的希望终会破土而出。" },
+            "000001": { name: "复卦", story: "大地深处，雷声隐隐，唤醒了沉睡的万物，这是'复'的时节11冬去春来，万象更新。嫩芽在土壤中悄悄萌发，带着对新生的渴望，在静谧中生长。这是新生的神秘力量11循环往复，生生不息。", advice: "你此刻的重启，是万象更新的开始，带着对新生的渴望静静前行，每一步都向着温暖与希望。" },
+            "111001": { name: "无妄卦", story: "天雷滚滚，震慑寰宇，却不妄为，每一声雷都遵循自然的节律。远古的先民知晓，做人当如天雷般，真诚为本，不妄言，不妄行，方能在静谧中安身立命。这是真诚的神秘力量11心无妄念，方能行稳致远。", advice: "你此刻的真诚，是最珍贵的品质，保持心无妄念的静谧，真诚前行，岁月自会对你温柔以待。" },
+            "100111": { name: "大畜卦", story: "高山之上，天空广阔，山承载着天空的广阔，也积累着自身的德行。草木在山间繁茂生长，鸟兽在山中安然栖息，这是'大畜'的境界11厚积德行，方能承载万物。", advice: "你此刻的积累，不仅是能力的提升，更是德行的沉淀，厚积成德，静谧前行，自会拥有承载美好的力量。" },
+            "100001": { name: "颐卦", story: "山雷震动，唤醒了万物的生机，也提醒人们要养正身心。远古的先民知晓，养生之道，在于顺应自然；养正之心，在于保持静谧。如同山间的草木，在雷声中生长，在静谧中休养，方能生机盎然。", advice: "你此刻的休养，不是懈怠，而是养正身心的必要过程，在静谧中滋养自己，身心充盈后，方能更好前行。" },
+            "011110": { name: "大过卦", story: "沼泽之上，狂风大作，吹弯了草木，却吹不断它们的根基。草木知晓，顺势弯腰，方能在狂风中保全自身；待风停之后，再挺直腰杆，继续生长。这是'大过'的智慧11身处险境，顺势而为，方能化险为夷。", advice: "你此刻的困境，如同草木遇狂风，不必硬抗，顺势调整姿态，静谧等待，风停之后，你会更加强韧。" },
+            "010010": { name: "坎卦", story: "深渊之中，流水潺潺，险象环生，却有鱼儿在水中安然游动。它们知晓，深渊虽险，却也藏着生存的智慧11谨慎前行，步步为营，方能在险中求安。这是'坎'的神秘力量11困境之中，藏着生存的勇气与智慧。", advice: "你此刻的困境，如同深渊流水，不必畏惧，带着勇气谨慎前行，静谧之中，自会找到安身立命的方法。" },
+            "101101": { name: "离卦", story: "夜幕之中，火光熊熊，光明普照，驱散了黑暗，也温暖了人心。火焰静静燃烧，不喧嚣，不张扬，却以自身的光明照亮前路。这是'离'的神秘力量11心怀光明，方能驱散黑暗，温暖前行。", advice: "你此刻的迷茫，如同夜幕笼罩，不必焦虑，心怀光明静静前行，你的光芒，自会照亮前路的黑暗。" },
+            "011100": { name: "咸卦", story: "沼泽之畔，山峦静默，泽水与山峦相互感应，滋养出漫山的生机。人与人之间，亦如泽山感应般，心有灵犀，无需言语，便能知晓彼此的心意。这是'咸'的神秘韵律11真诚感应，方能心意相通。", advice: "你此刻的期待，会被真诚感应，不必刻意言说，保持内心的静谧与真诚，心意相通的人，自会向你走来。" },
+            "001110": { name: "恒卦", story: "雷声与风声相伴相生，恒久不变，如同人与人之间的坚守与陪伴。它们在自然中静静回响，不轻易改变，滋养着万物的生长。这是'恒'的智慧11坚守初心，恒久陪伴，方能长久美好。", advice: "你此刻的坚守，是恒久美好的基石，不必动摇，带着初心静谧前行，那些你珍视的，自会恒久相伴。" },
+            "111100": { name: "遁卦", story: "天空之下，山峦静默，有智者选择遁入山林，避世修身。他知晓，当世事纷扰时，需回归静谧，滋养身心，待时机成熟时，再出山济世。这是'遁'的智慧11避世不是逃避，而是修身养性的静谧时光。", advice: "你此刻的退缩，不是逃避，而是为了修身养性的静谧时光，安心沉淀自己，待时机成熟，自会光芒再现。" },
+            "001111": { name: "大壮卦", story: "雷声与天空相伴，刚健有力，却不张扬。草木在雷声中茁壮成长，展现出大壮的生机，却也保持着谦逊的姿态。这是'大壮'的智慧11刚健有度，不逞匹夫之勇，方能长久壮大。", advice: "你此刻的刚健，是成长的力量，保持适度的谦逊，静谧前行，你的力量会在沉稳中愈发强大。" },
+            "101000": { name: "晋卦", story: "火光从大地上升起，步步高升，照亮了前路，也温暖了人心。草木在火光的照耀下，步步生长，愈发繁茂。这是'晋'的神秘韵律11顺势而为，步步提升，方能亨通顺遂。", advice: "你此刻的努力，正在铺垫步步高升的道路，不必着急，带着沉稳的心态静谧前行，每一步都在向上生长。" },
+            "000101": { name: "明夷卦", story: "火光被大地覆盖，看似昏暗无光，实则在地下静静积蓄力量。远古的智者知晓，当光明被遮蔽时，需韬光养晦，如同地下的火光般，不急于显露，待时机成熟时，再重见光明。", advice: "你此刻的昏暗，是韬光养晦的时光，不必沮丧，在静谧中积蓄力量，终有一天，你会重见光明，光芒更盛。" },
+            "110101": { name: "家人卦", story: "清风与火光相伴，温暖了家庭的每一个角落。家人之间，如同清风与火光般，相互温暖，相互陪伴，在静谧中享受家庭的温馨。这是'家人'的智慧11家和方能业兴，温馨方能长久。", advice: "你此刻的守护，是家庭温馨的基石，珍惜这份静谧的温暖，家和业兴，岁月自会温柔以待。" },
+            "101011": { name: "睽卦", story: "火光与泽水看似相悖，却能相互滋养，共同滋养万物。人与人之间，亦如冰火泽睽般，虽有差异，却能求同存异，在静谧中和谐相处。这是'睽'的智慧11尊重差异，求同存异，方能和谐共生。", advice: "你此刻的差异，不是隔阂的理由，尊重彼此的不同，在静谧中寻找共识，终会和谐相处，相互成就。" },
+            "010100": { name: "蹇卦", story: "流水在山峦间穿行，虽遇阻碍，却不退缩，迎难而上，最终冲破阻碍，汇入江河。这是'蹇'的神秘力量11困境之中，迎难而上，方能冲破阻碍，抵达远方。", advice: "你此刻的阻碍，是成长的试金石，不必畏惧，带着勇气迎难而上，静谧前行，终会冲破阻碍，抵达理想的彼岸。" },
+            "001010": { name: "解卦", story: "雷声响起，春雨降临，化解了冬日的严寒，也解除了大地的干旱。万物在春雨中苏醒，摆脱了困境，焕发生机。这是'解'的智慧11顺应时序，适时解难，方能脱困重生。", advice: "你此刻的困境，如同冬日的严寒，不必焦虑，等待时机，适时调整，终会解难脱困，焕发生机。" },
+            "100011": { name: "损卦", story: "山峦为泽水输送养分，泽水为山峦滋养草木，二者损有余补不足，相互滋养，共同生长。这是'损'的智慧11懂得取舍，损有余补不足，方能平衡和谐。", advice: "你此刻的取舍，不是失去，而是为了更好的平衡，懂得损有余补不足，在静谧中调整自己，终会达到和谐的状态。" },
+            "110001": { name: "益卦", story: "清风与雷声相伴，相互助力，相得益彰，滋养着万物的生长。人与人之间，亦如风雷益般，相互帮助，相互成就，在静谧中共同成长。这是'益'的智慧11互帮互助，方能相得益彰。", advice: "你此刻的付出，会得到相应的回报，乐于帮助他人，在静谧中相互成就，终会实现共赢的美好。" },
+            "011111": { name: "夬卦", story: "泽水在天空之下流淌，果决前行，不拖泥带水，最终汇入大海。远古的智者知晓，当机立断，果决前行，方能摆脱困境，抵达远方。这是'夬'的智慧11果决不是鲁莽，而是深思熟虑后的坚定。", advice: "你此刻的果决，是深思熟虑后的坚定，不必犹豫，带着这份坚定静谧前行，终会抵达理想的彼岸。" },
+            "111110": { name: "姤卦", story: "清风在天空中吹拂，遇见了志同道合的伙伴，相伴前行，滋养着万物。人与人之间的相遇，亦如天风姤般，是命中注定的缘分，在静谧中相伴成长。这是'姤'的神秘韵律11相遇是缘，珍惜便好。", advice: "你此刻的相遇，是时光馈赠的缘分，珍惜这份遇见，在静谧中相伴前行，会收获别样的温暖与成长。" },
+            "011000": { name: "萃卦", story: "泽水汇聚于大地之上，聚沙成塔，积水成渊，滋养出漫山的生机。人们汇聚在一起，同心协力，在静谧中完成伟大的事业。这是'萃'的智慧11聚沙成塔，同心协力，方能成就大事。", advice: "你此刻的积累，正在聚沙成塔，不必轻视微小的力量，在静谧中凝聚合力，终会成就属于自己的伟大。" },
+            "000110": { name: "升卦", story: "清风从大地上升起，循序渐进，步步高升，滋养着万物的生长。草木在清风的吹拂下，循序渐进，慢慢生长，愈发繁茂。这是'升'的智慧11循序渐进，不急于求成，方能稳步提升。", advice: "你此刻的进步，虽缓慢却坚定，不必急于求成，在静谧中循序渐进，终会稳步提升，抵达理想的高度。" },
+            "011010": { name: "困卦", story: "泽水被山峦困住，看似绝境，却在静谧中寻找出路，最终冲破束缚，汇入江河。草木在困境中静静扎根，等待重生的机会。这是'困'的神秘力量11绝境之中，藏着重生的希望。", advice: "你此刻的困境，不是终点，而是重生的起点，不必绝望，在静谧中寻找出路，终会冲破束缚，重获新生。" },
+            "010110": { name: "井卦", story: "井水在清风的吹拂下，静静流淌，滋养着周边的生灵，不息不休。井水清澈见底，不张扬，不显露，却以自身的滋养温暖着每一个生命。这是'井'的智慧11无私奉献，滋养不息，方能赢得尊重。", advice: "你此刻的付出，如同井水滋养生灵，不必求回报，在静谧中无私奉献，自会赢得他人的尊重与喜爱。" },
+            "011101": { name: "革卦", story: "泽水与火光相遇，引发变革，烧毁旧的事物，滋养新的生命。远古的先民知晓，当旧的秩序不再适应时代时，需勇于革新，在变革中重获新生。这是'革'的神秘力量11勇于革新，方能与时俱进。", advice: "你此刻的革新，是与时俱进的勇气，不必畏惧改变，在静谧中坚定革新，终会重获新生，绽放新的光芒。" },
+            "101110": { name: "鼎卦", story: "火光在清风的吹拂下，温暖着鼎器，鼎器稳固如山，滋养着万物。远古的先民知晓，做事当如鼎器般稳固，方能长久前行。这是'鼎'的智慧11稳固根基，方能行稳致远。", advice: "你此刻的稳固，是前行的根基，不必急于求成，在静谧中筑牢根基，终会行稳致远，成就长久的美好。" },
+            "001001": { name: "震卦", story: "雷声震彻寰宇，警醒着万物，让人们心怀敬畏，谨慎前行。草木在雷声中警醒，更加坚定地扎根生长。这是'震'的智慧11心怀敬畏，方能谨慎前行，不犯错误。", advice: "你此刻的敬畏，是前行的警醒，保持这份敬畏之心，在静谧中谨慎前行，终会避开错误，行稳致远。" },
+            "100100": { name: "艮卦", story: "山峦静默矗立，知止不殆，不盲目扩张，却滋养着漫山的草木。远古的智者知晓，做人做事当如山峦般，懂得停止，方能避免危险，长久安宁。这是'艮'的智慧11知止不殆，方能长久安宁。", advice: "你此刻的停止，不是懈怠，而是知止不殆的智慧，懂得适时停止，在静谧中调整自己，终会避免危险，长久安宁。" },
+            "110100": { name: "渐卦", story: "清风在山峦间缓缓穿行，循序渐进，不急于求成，滋养着草木的生长。鸟儿在山间缓缓飞翔，循序渐进，搭建起自己的巢穴。这是'渐'的智慧11循序渐进，方能水到渠成。", advice: "你此刻的缓慢，是循序渐进的铺垫，不必焦虑，在静谧中稳步前行，终会水到渠成，实现目标。" },
+            "001011": { name: "归妹卦", story: "雷声与泽水相伴，顺应天意，成就美好的姻缘。人与人之间的结合，亦如雷泽归妹般，顺应天意，在静谧中享受美好的爱情。这是'归妹'的神秘韵律11顺应天意，方能成就美好姻缘。", advice: "你此刻的等待，是在顺应天意的安排，不必着急，保持内心的静谧与真诚，美好的姻缘终会降临。" },
+            "001101": { name: "丰卦", story: "雷声与火光相伴，照亮了大地，也带来了丰盛的收获。农夫在田间收割，果实累累，丰盛有余，脸上带着满足的微笑。这是'丰'的境界11努力付出，终会收获丰盛。", advice: "你此刻的付出，正在孕育丰盛的收获，不必着急，带着期待静谧前行，终会收获属于自己的丰盛与美好。" },
+            "101100": { name: "旅卦", story: "火山之下，旅人前行，虽四处漂泊，却能随遇而安。他知晓，人生如旅，不必执着于归宿，在漂泊中感受自然的美好，在静谧中寻找内心的安宁。这是'旅'的智慧11随遇而安，方能内心安宁。", advice: "你此刻的漂泊，不是无依，而是人生的一场旅行，学会随遇而安，在静谧中寻找内心的安宁，每一处风景都是收获。" },
+            "110110": { name: "巽卦", story: "清风拂过大地，谦逊顺从，不张扬，不傲慢，却能滋养万物。草木在清风的吹拂下，谦逊生长，愈发繁茂。这是'巽'的智慧11谦逊顺从，方能赢得人心，滋养万物。", advice: "你此刻的谦逊，是赢得人心的智慧，不必刻意彰显自己，在静谧中谦逊前行，自会得到他人的喜爱与帮助。" },
+            "011011": { name: "兑卦", story: "泽水潺潺流淌，滋养着万物，也带来了愉悦的氛围。人们在泽水之畔相聚，欢声笑语，愉悦相处，在静谧中享受美好的时光。这是'兑'的智慧11愉悦相处，方能和谐共生。", advice: "你此刻的愉悦，是和谐相处的基石，带着这份好心情静谧前行，自会吸引更多美好的人与事向你靠近。" },
+            "110010": { name: "涣卦", story: "清风与流水相伴，吹散了陈旧的尘埃，也涣散了不好的情绪。人们在清风流水间，忘却烦恼，重获新生，在静谧中找回内心的安宁。这是'涣'的智慧11涣散不好的，方能重获新生。", advice: "你此刻的烦恼，如同陈旧的尘埃，不必执着，让清风流水般的心境吹散它们，在静谧中重获新生，找回内心的安宁。" },
+            "010111": { name: "节卦", story: "流水在泽畔流淌，节制有度，不泛滥，不枯竭，滋养着万物。人们知晓，做人做事当如流水般，节制有度，方能长久美好。这是'节'的智慧11节制有度，方能长久安宁。", advice: "你此刻的节制，是长久美好的基石，不必放纵自己，在静谧中保持适度的节制，终会收获长久的安宁与美好。" },
+            "110011": { name: "中孚卦", story: "清风与泽水相伴，诚信为本，滋养着万物的生长。人与人之间，亦如风泽中孚般，以诚信相待，在静谧中建立起深厚的信任。这是'中孚'的智慧11诚信为本，方能赢得信任。", advice: "你此刻的诚信，是最珍贵的品质，保持这份诚信，在静谧中真诚前行，自会赢得他人的信任与尊重。" },
+            "001100": { name: "小过卦", story: "雷声在山峦间回响，虽不震彻寰宇，却能警醒万物。人们知晓，小事可为，大事不可妄为，在小事中积累力量，在静谧中稳步前行。这是'小过'的智慧11脚踏实地，小事积累，方能成就大事。", advice: "你此刻的小事，不是微不足道，而是积累力量的基石，脚踏实地做好每一件小事，在静谧中稳步前行，终会成就大事。" },
+            "010101": { name: "既济卦", story: "水火交融，既济圆满，滋养着万物的生长。天地之间，圆满和谐，静谧安宁，这是'既济'的境界11阴阳平衡，圆满和谐，方能长久美好。", advice: "你此刻的圆满，是阴阳平衡的结果，珍惜这份美好，在静谧中保持平衡，终会长久享受这份圆满与和谐。" },
+            "101010": { name: "未济卦", story: "火水尚未交融，看似未圆满，却藏着无限的可能。万物在静谧中等待，积蓄力量，期待着水火交融的圆满时刻。这是'未济'的神秘韵律11未圆满不是遗憾，而是未来可期的希望。", advice: "你此刻的未圆满，不是遗憾，而是未来可期的铺垫，带着希望静谧前行，终会迎来属于自己的圆满时刻。" }
+        };
+
+        function calculateGua() {
+            // 修改：从currentYao中提取阴阳值数组
+            const guaId = currentYao.map(item => item.yinYang).join('');
+            const result = GUAS_MAP[guaId];
+            
+            if (result) {
+                document.getElementById('gua-name').innerText = result.name;
+                document.getElementById('gua-story').innerText = result.story;
+                document.getElementById('gua-advice').innerText = result.advice;
+            } // 64卦已完整映射，无需else分支
+            
+            const visual = document.getElementById('gua-visual');
+            visual.innerHTML = "";
+            
+            // ============= 关键修改：为每个爻显示对应的卡牌图片，并使用不同长度的连接线 =============
+            currentYao.forEach((yaoObj, idx) => {
+                const y = yaoObj.yinYang;
+                const tile = yaoObj.tile; // 获取对应的卡牌对象
+                
+                const row = document.createElement('div');
+                row.className = "relative flex items-center justify-center";
+                
+                // 调整连接线位置：现在从上往下看，索引0在最上面，索引5在最下面
+                // 从上面开始数：奇数位置在右，偶数位置在左
+                const isRight = (idx % 2 !== 0); 
+                
+                const line = document.createElement('div');
+                line.className = y === 1 ? "yang-line" : "yin-line";
+                if(y === 0) line.innerHTML = "<div></div><div></div>";
+                
+                const connector = document.createElement('div');
+                connector.className = `connector-line ${isRight ? 'right' : 'left'} pos-${idx}`;
+                
+                const box = document.createElement('div');
+                box.className = `tile-box ${isRight ? 'right' : 'left'} pos-${idx}`;
+                
+                // ========== 修改图片显示方式：使用 contain 确保完整显示，不被裁剪 ==========
+                const imageUrl = tile.imageUrl || CONFIG.backImage;
+                box.innerHTML = `<img src="${imageUrl}" alt="${tile.name}" style="max-width:100%; max-height:100%; object-fit: contain; display: block; margin: auto; border-radius: 6px;" />`; 
+                box.setAttribute('data-tip', `此处为该爻位所对应的关联解析...`);
+
+                row.appendChild(connector);
+                row.appendChild(box);
+                row.appendChild(line);
+                visual.appendChild(row);
+            });
+            
+            // 模态框打开，禁用粒子交互，并重置粒子状态为自然波动
+            isModalOpen = true;
+            particleHandActive = false;  // 让粒子恢复自然波动
+
+            currentStudyStep = 0;
+            document.getElementById('btn-study').innerText = "研读此卦";
+            document.getElementById('gua-modal').classList.remove('step-1-active', 'step-2-active');
+            document.getElementById('gua-modal').classList.remove('hidden');
+        }
+
+        // 新增：文化弹窗控制 (带渐显动画)
+        function showMahjongCultureModal() {
+            const modal = document.getElementById('culture-modal-mahjong');
+            modal.classList.add('active');
+            // 渐显动画：先移除所有 active 类，再逐个添加
+            const lines = document.querySelectorAll('#mahjong-culture-text .text-line');
+            lines.forEach(line => line.classList.remove('active'));
+            let delay = 300;
+            lines.forEach((line, index) => {
+                setTimeout(() => {
+                    line.classList.add('active');
+                }, delay);
+                delay += 1000; // 每个间隔1秒
+            });
+        }
+
+        function closeMahjongCultureModal() {
+            const modal = document.getElementById('culture-modal-mahjong');
+            modal.classList.remove('active');
+            // 可选：移除所有 text-line 的 active 类，以便下次打开时重新动画
+            document.querySelectorAll('#mahjong-culture-text .text-line').forEach(line => line.classList.remove('active'));
+        }
+
+        function handleStudyClick() {
+            // 第一步：显示文化弹窗（麻将纹样）
+            if (currentStudyStep === 0) {
+                showMahjongCultureModal();
+                document.getElementById('gua-modal').classList.add('step-1-active');
+                document.getElementById('btn-study').innerText = "继续研读";
+                currentStudyStep = 1;
+            } else if (currentStudyStep === 1) {
+                document.getElementById('gua-modal').classList.remove('step-1-active');
+                document.getElementById('gua-modal').classList.add('step-2-active');
+                document.getElementById('btn-study').style.display = "none";
+                currentStudyStep = 2;
+            }
+        }
+
+        // 重置视角函数
+        function resetView() {
+            targetRotation = CONFIG.defaultRotation;
+            updateViewIndicator();
+        }
+
+        function resetGame() {
+            const modal = document.getElementById('gua-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('step-1-active', 'step-2-active');
+            document.getElementById('btn-study').style.display = "block";
+            currentYao = [];
+            currentStudyStep = 0;
+            updateProgressBar();
+            
+            // 模态框关闭，恢复手势控制
+            isModalOpen = false;
+            
+            // 重置视角
+            resetView();
+            
+            // 重置所有卡牌位置、旋转和材质透明度
+            tileMeshes.forEach(mesh => {
+                if (mesh.userData && mesh.userData.originalPos) {
+                    // 确保卡牌在容器中
+                    if (!cardContainer.children.includes(mesh)) {
+                        scene.remove(mesh);
+                        cardContainer.add(mesh);
+                    }
+                    
+                    // 重置位置
+                    new TWEEN.Tween(mesh.position)
+                        .to({ 
+                            x: mesh.userData.originalPos.x, 
+                            y: mesh.userData.originalPos.y, 
+                            z: mesh.userData.originalPos.z 
+                        }, 1500)
+                        .start();
+                    
+                    // 重置旋转和朝向
+                    new TWEEN.Tween(mesh.rotation)
+                        .to({ 
+                            x: mesh.userData.originalRot.x, 
+                            y: 0, 
+                            z: mesh.userData.originalRot.z 
+                        }, 1200)
+                        .onComplete(() => {
+                            mesh.userData.isFlipped = false;
+                            // 确保所有卡牌都回到背面状态
+                            if (mesh.userData.backMaterial) {
+                                mesh.userData.backMaterial.opacity = 1;
+                            }
+                            if (mesh.userData.frontMaterial) {
+                                mesh.userData.frontMaterial.opacity = 0;
+                            }
+                            // 重置飞行状态
+                            mesh.userData.isFlying = false;
+                            mesh.userData.pauseStartTime = 0;
+                        })
+                        .start();
+                    
+                    // 重置缩放
+                    new TWEEN.Tween(mesh.scale)
+                        .to(mesh.userData.originalScale, 1200)
+                        .start();
+                }
+            });
+        }
+
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                videoElement.srcObject = stream;
+                return new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => { videoElement.play(); resolve(); };
+                });
+            } catch (err) {
+                document.getElementById('loader-icon').classList.add('hidden');
+                document.getElementById('loading-text').innerText = "星际信标已阻断";
+                document.getElementById('error-hint').classList.remove('hidden');
+                throw err;
+            }
+        }
+
+        // 添加键盘控制
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowLeft':
+                    targetRotation += 0.2;
+                    break;
+                case 'ArrowRight':
+                    targetRotation -= 0.2;
+                    break;
+                case 'r':
+                case 'R':
+                    resetView();
+                    break;
+            }
+            
+            updateViewIndicator();
+        });
+
+        // ============= 主要修改：重新组织初始化流程 =============
+        window.onload = async () => {
+            // 1. 首先加载所有纹理（背面+所有正面）
+            try {
+                document.getElementById('loading-text').innerText = "正在加载所有卡牌纹理...";
+                await loadAllTextures(); // 等待所有纹理加载完成
+                
+                // 2. 初始化场景（所有纹理都已就绪）
+                initScene();
+                animate();
+                updateProgressBar();
+                
+                document.getElementById('loading-text').innerText = "正在初始化摄像头...";
+                document.getElementById('progress-inner').style.width = '95%';
+                
+                // 3. 初始化摄像头
+                try {
+                    await initCamera();
+                    const cameraUtils = new Camera(videoElement, {
+                        onFrame: async () => { await hands.send({image: videoElement}); },
+                        width: 320, height: 240
+                    });
+                    await cameraUtils.start();
+                    
+                    // 显示摄像头容器
+                    document.getElementById('cam-container').classList.remove('hidden');
+                    
+                    document.getElementById('progress-inner').style.width = '100%';
+                    document.getElementById('loading-text').innerText = "加载完成！";
+                    
+                    setTimeout(() => {
+                        document.getElementById('loading-overlay').style.opacity = '0';
+                        setTimeout(() => document.getElementById('loading-overlay').style.display = 'none', 500);
+                    }, 500);
+                } catch (e) {
+                    // 摄像头初始化失败，但仍然显示场景
+                    console.error('摄像头初始化失败:', e);
+                    document.getElementById('loading-text').innerText = "摄像头初始化失败，但场景已就绪";
+                    document.getElementById('progress-inner').style.width = '100%';
+                    
+                    setTimeout(() => {
+                        document.getElementById('loading-overlay').style.opacity = '0';
+                        setTimeout(() => document.getElementById('loading-overlay').style.display = 'none', 500);
+                    }, 1000);
+                }
+            } catch (error) {
+                console.error('初始化失败:', error);
+                // 使用默认颜色继续
+                texturesLoaded = true;
+                initScene();
+                animate();
+                updateProgressBar();
+                document.getElementById('loading-text').innerText = "使用默认颜色渲染...";
+                document.getElementById('progress-inner').style.width = '100%';
+                
+                try {
+                    await initCamera();
+                    const cameraUtils = new Camera(videoElement, {
+                        onFrame: async () => { await hands.send({image: videoElement}); },
+                        width: 320, height: 240
+                    });
+                    await cameraUtils.start();
+                } catch (e) {
+                    console.error('摄像头初始化失败:', e);
+                }
+                
+                setTimeout(() => {
+                    document.getElementById('loading-overlay').style.opacity = '0';
+                    setTimeout(() => document.getElementById('loading-overlay').style.display = 'none', 500);
+                }, 1000);
+            }
+        };
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+
+    <!-- ==================== 新增麻将粒子背景控制 (不改变原代码) ==================== -->
+    <script>
+        (function() {
+            // ---------- 麻将粒子背景配置 (完全移植自第二个文件，稍作调整) ----------
+            const MAHJONG_IMAGE_URLS = [
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/LA3o/1617X1617/1yiwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Jbxt/1617X1617/2erwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Y7Ga/1617X1617/3sanwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/L1GO/1617X1617/4siwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Jcg8/1617X1617/5wuwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/sVlO/1617X1617/6liuwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/K9Jp/1617X1617/7qiwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/O34i/1617X1617/8bawan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/mnuE/1617X1617/9jiuwan.png',
+                'https://img.heliar.top/file/1773305145270_yitong.png',
+                'https://img.heliar.top/file/1773305133525_ertong.png',
+                'https://img.heliar.top/file/1773305134605_santong.png',
+                'https://img.heliar.top/file/1773305141315_sitong.png',
+                'https://img.heliar.top/file/1773305141030_wutong.png',
+                'https://img.heliar.top/file/1773305137550_liutong.png',
+                'https://img.heliar.top/file/1773305136133_qitong.png',
+                'https://img.heliar.top/file/1773305140201_batong.png',
+                'https://img.heliar.top/file/1773305136176_jiutong.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/lLtX/1617X1617/1.1.1yitiao.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/v143/1617X1617/1.1.2ertiao.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/axzI/1617X1617/1.1.3santiao.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/3Yjm/1617X1617/1.1.4sitiao.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/zG2b/1617X1617/1.1.5wutiao.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/TQUG/1617X1617/1.1.6liutiao.png',
+                'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/wjl3/1617X1617/1.1.7qitiao.png',
+                'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/of5D/1617X1617/1.1.8batiao.png',
+                'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/t3xL/1617X1617/1.1.9jiutiao.png',
+                'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/eEyJ/1617X1617/dong.png',
+                'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/Nuvb/1617X1617/nan.png',
+                'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/AJXN/1617X1617/xi.png',
+                'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/bZfC/1617X1617/bei.png',
+                'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/Af0S/1617X1617/zhong.png',
+                'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/I1nJ/1617X1617/fa.png',
+                'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/4c1D/1617X1617/bai.png',
+                'https://img.heliar.top/file/1773305145895_1mei.png',
+                'https://img.heliar.top/file/1773305151176_1lan.png',
+                'https://img.heliar.top/file/1773305158334_1zhu.png',
+                'https://img.heliar.top/file/1773305142900_1ju.png',
+                'https://img.heliar.top/file/1773305141216_1chun.png',
+                'https://img.heliar.top/file/1773305159003_1xia.png',
+                'https://img.heliar.top/file/1773305144141_1qiu.png',
+                'https://img.heliar.top/file/1773305149387_1dongji.png'
+            ];
+
+            let mCtx, mCanvas, mWidth, mHeight;
+            let mClusters = [];
+            let mStars = [];
+            const targetClustersCount = 12;
+            let mMahjongImageData = [];
+            let mAnimationId = null;
+            let mPreloadComplete = false;
+
+            // 初始化星星
+            function initMahjongStars() {
+                mStars = [];
+                const starCount = 200;
+                for (let i = 0; i < starCount; i++) {
+                    mStars.push({
+                        x: Math.random() * mWidth,
+                        y: Math.random() * mHeight,
+                        size: Math.random() * 1.2,
+                        opacity: Math.random(),
+                        speed: 0.005 + Math.random() * 0.01
+                    });
+                }
+            }
+
+            // 绘制星星
+            function drawMahjongStars() {
+                for (let s of mStars) {
+                    s.opacity += s.speed;
+                    if (s.opacity > 1 || s.opacity < 0.1) s.speed *= -1;
+                    mCtx.fillStyle = `rgba(255, 255, 255, ${s.opacity * 0.25})`;
+                    mCtx.beginPath();
+                    mCtx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+                    mCtx.fill();
+                }
+            }
+
+            // 预加载图片 (提取粒子数据)
+            async function preloadMahjongImages() {
+                const promises = MAHJONG_IMAGE_URLS.map(url => {
+                    return new Promise((resolve) => {
+                        const img = new Image();
+                        img.crossOrigin = "anonymous";
+                        img.src = url;
+                        img.onload = () => {
+                            const tempCanvas = document.createElement('canvas');
+                            const tCtx = tempCanvas.getContext('2d');
+                            const size = 75;
+                            tempCanvas.width = size;
+                            tempCanvas.height = size * 1.35;
+                            tCtx.drawImage(img, 0, 0, tempCanvas.width, tempCanvas.height);
+                            const data = tCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height).data;
+                            
+                            const points = [];
+                            for (let y = 0; y < tempCanvas.height; y += 2) {
+                                for (let x = 0; x < tempCanvas.width; x += 2) {
+                                    const index = (y * tempCanvas.width + x) * 4;
+                                    if (data[index + 3] > 128) {
+                                        points.push({
+                                            x: x - tempCanvas.width / 2,
+                                            y: y - tempCanvas.height / 2,
+                                            r: data[index],
+                                            g: data[index + 1],
+                                            b: data[index + 2]
+                                        });
+                                    }
+                                }
+                            }
+                            resolve(points);
+                        };
+                        img.onerror = () => resolve(null);
+                    });
+                });
+
+                const results = await Promise.all(promises);
+                mMahjongImageData = results.filter(r => r !== null);
+                mPreloadComplete = true;
+                // 图片加载完成后创建初始粒子团
+                for (let i = 0; i < targetClustersCount; i++) {
+                    const c = createMahjongCluster();
+                    if (c) mClusters.push(c);
+                }
+            }
+
+            // 粒子团类 (移植自第二个文件)
+            class MahjongParticleCluster {
+                constructor(x, y, imageData) {
+                    this.x = x;
+                    this.y = y;
+                    this.vx = (Math.random() - 0.5) * 0.4;
+                    this.vy = (Math.random() - 0.5) * 0.4;
+                    this.imageData = imageData;
+                    this.radius = 45;
+                    this.life = 1;
+                    this.isDying = false;
+                    this.maxDist = 0;
+                    this.rotation = Math.random() * Math.PI * 2;
+                    this.rotationSpeed = (Math.random() - 0.5) * 0.003;
+                    this.driftOffset = Math.random() * 1000;
+
+                    this.particles = imageData.map(p => {
+                        const dist = Math.sqrt(p.x * p.x + p.y * p.y);
+                        if (dist > this.maxDist) this.maxDist = dist;
+                        return {
+                            ox: p.x,
+                            oy: p.y,
+                            x: x + p.x,
+                            y: y + p.y,
+                            r: p.r,
+                            g: p.g,
+                            b: p.b,
+                            vx: 0,
+                            vy: 0,
+                            alpha: 1,
+                            distRatio: dist
+                        };
+                    });
+
+                    for(let p of this.particles) {
+                        p.distRatio /= (this.maxDist || 1);
+                    }
+                }
+
+                update() {
+                    if (!this.isDying) {
+                        this.driftOffset += 0.005;
+                        const driftX = Math.sin(this.driftOffset) * 0.1;
+                        const driftY = Math.cos(this.driftOffset) * 0.1;
+
+                        this.x += (this.vx + driftX);
+                        this.y += (this.vy + driftY);
+                        this.rotation += this.rotationSpeed;
+
+                        // 边界反弹
+                        if (this.x < this.radius) {
+                            this.vx = Math.abs(this.vx) * (0.9 + Math.random() * 0.2);
+                            this.x = this.radius;
+                        } else if (this.x > mWidth - this.radius) {
+                            this.vx = -Math.abs(this.vx) * (0.9 + Math.random() * 0.2);
+                            this.x = mWidth - this.radius;
+                        }
+
+                        if (this.y < this.radius) {
+                            this.vy = Math.abs(this.vy) * (0.9 + Math.random() * 0.2);
+                            this.y = this.radius;
+                        } else if (this.y > mHeight - this.radius) {
+                            this.vy = -Math.abs(this.vy) * (0.9 + Math.random() * 0.2);
+                            this.y = mHeight - this.radius;
+                        }
+
+                        const cos = Math.cos(this.rotation);
+                        const sin = Math.sin(this.rotation);
+
+                        for (let p of this.particles) {
+                            const rx = p.ox * cos - p.oy * sin;
+                            const ry = p.ox * sin + p.oy * cos;
+                            p.x = this.x + rx;
+                            p.y = this.y + ry;
+                        }
+                    } else {
+                        this.life -= 0.005;
+                        for (let p of this.particles) {
+                            p.x += p.vx;
+                            p.y += p.vy;
+                            p.vx *= 0.97;
+                            p.vy *= 0.97;
+                            p.alpha = this.life * (1 - p.distRatio * 0.65);
+                        }
+                    }
+                }
+
+                draw() {
+                    for (let p of this.particles) {
+                        const a = this.isDying ? p.alpha : this.life;
+                        if (a <= 0) continue;
+                        mCtx.fillStyle = `rgba(${p.r}, ${p.g}, ${p.b}, ${a})`;
+                        mCtx.fillRect(p.x, p.y, 1.4, 1.4);
+                    }
+                }
+
+                explode() {
+                    this.isDying = true;
+                    for (let p of this.particles) {
+                        const angle = Math.atan2(p.oy, p.ox) + (Math.random() - 0.5) * 0.5;
+                        const force = Math.random() * 1.8 + 0.4;
+                        p.vx = Math.cos(angle) * force;
+                        p.vy = Math.sin(angle) * force;
+                    }
+                }
+            }
+
+            function createMahjongCluster() {
+                if (mMahjongImageData.length === 0) return null;
+                const data = mMahjongImageData[Math.floor(Math.random() * mMahjongImageData.length)];
+                const margin = 120;
+                let x, y, tooClose;
+                let attempts = 0;
+                do {
+                    x = Math.random() * (mWidth - margin * 2) + margin;
+                    y = Math.random() * (mHeight - margin * 2) + margin;
+                    tooClose = mClusters.some(c => !c.isDying && Math.hypot(c.x - x, c.y - y) < 180);
+                    attempts++;
+                } while (tooClose && attempts < 10);
+                return new MahjongParticleCluster(x, y, data);
+            }
+
+            function applyMahjongPhysics() {
+                for (let i = 0; i < mClusters.length; i++) {
+                    for (let j = i + 1; j < mClusters.length; j++) {
+                        const c1 = mClusters[i];
+                        const c2 = mClusters[j];
+                        if (c1.isDying || c2.isDying) continue;
+
+                        const dx = c1.x - c2.x;
+                        const dy = c1.y - c2.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        const minDist = c1.radius + c2.radius;
+
+                        if (dist < minDist * 1.8) {
+                            const pushForce = 0.0005;
+                            const ax = (dx / dist) * pushForce;
+                            const ay = (dy / dist) * pushForce;
+                            c1.vx += ax;
+                            c1.vy += ay;
+                            c2.vx -= ax;
+                            c2.vy -= ay;
+
+                            const speedLimit = 0.5;
+                            const s1 = Math.hypot(c1.vx, c1.vy);
+                            const s2 = Math.hypot(c2.vx, c2.vy);
+                            if (s1 > speedLimit) { c1.vx *= 0.95; c1.vy *= 0.95; }
+                            if (s2 > speedLimit) { c2.vx *= 0.95; c2.vy *= 0.95; }
+                        }
+
+                        if (dist < minDist * 0.8) {
+                            c1.explode();
+                            c2.explode();
+                            setTimeout(() => {
+                                if (mClusters.filter(c => !c.isDying).length < targetClustersCount) {
+                                    const new1 = createMahjongCluster();
+                                    const new2 = createMahjongCluster();
+                                    if (new1) mClusters.push(new1);
+                                    if (new2) mClusters.push(new2);
+                                }
+                            }, 2500);
+                        }
+                    }
+                }
+            }
+
+            function mahjongAnimate() {
+                if (!mCtx || !mCanvas) return;
+
+                // 模态框隐藏时，停止绘制以节省性能（可选，但为了简化，我们继续绘制但背景不可见）
+                // 这里始终绘制，因为画布在模态框内，模态框隐藏时不可见
+                mCtx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+                mCtx.fillRect(0, 0, mWidth, mHeight);
+
+                drawMahjongStars();
+                applyMahjongPhysics();
+
+                mClusters = mClusters.filter(c => c.life > 0);
+
+                for (let c of mClusters) {
+                    c.update();
+                    c.draw();
+                }
+
+                mAnimationId = requestAnimationFrame(mahjongAnimate);
+            }
+
+            function resizeMahjongCanvas() {
+                if (!mCanvas) return;
+                mWidth = window.innerWidth;
+                mHeight = window.innerHeight;
+                mCanvas.width = mWidth;
+                mCanvas.height = mHeight;
+                initMahjongStars();
+            }
+
+            // 初始化
+            function initMahjongParticleBackground() {
+                if (mCanvas) return; // 已初始化
+                mCanvas = document.getElementById('mahjong-particle-bg');
+                if (!mCanvas) return;
+                mCtx = mCanvas.getContext('2d', { willReadFrequently: true });
+                
+                resizeMahjongCanvas();
+                window.addEventListener('resize', resizeMahjongCanvas);
+
+                preloadMahjongImages().then(() => {
+                    // 如果预加载完成后还没有集群，再补几个
+                    if (mClusters.length === 0 && mMahjongImageData.length > 0) {
+                        for (let i = 0; i < targetClustersCount; i++) {
+                            const c = createMahjongCluster();
+                            if (c) mClusters.push(c);
+                        }
+                    }
+                });
+
+                // 启动动画循环
+                if (mAnimationId) cancelAnimationFrame(mAnimationId);
+                mAnimationId = requestAnimationFrame(mahjongAnimate);
+            }
+
+            // 在页面加载完成后初始化
+            if (document.readyState === 'complete') {
+                initMahjongParticleBackground();
+            } else {
+                window.addEventListener('load', initMahjongParticleBackground);
+            }
+        })();
+    </script>
+
+    <!-- 监听模态框状态，控制原粒子系统的显示隐藏 (不修改原函数) -->
+    <script>
+        (function() {
+            const modal = document.getElementById('gua-modal');
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mut) => {
+                    if (mut.attributeName === 'class') {
+                        const isHidden = modal.classList.contains('hidden');
+                        // 当模态框显示时，隐藏Three.js山水粒子
+                        if (window.particleSystem) {
+                            window.particleSystem.visible = isHidden; // 隐藏时显示？注意逻辑：隐藏模态框时显示山水，显示模态框时隐藏山水
+                            // 我们想要：模态框显示（hidden移除） => 山水粒子隐藏 (visible = false)
+                            // 模态框隐藏（hidden添加） => 山水粒子显示 (visible = true)
+                            window.particleSystem.visible = isHidden; 
+                        }
+                    }
+                });
+            });
+            observer.observe(modal, { attributes: true });
+        })();
+    </script>
+</body>
+</html>

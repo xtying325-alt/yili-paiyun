@@ -1,0 +1,2544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>卦象 · 星云粒子 · 灵境爻辞</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    <!-- 手势交互所需库 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Noto+Serif+SC:wght@300;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Cinzel', 'serif'],
+                        'serif-sc': ['Noto Serif SC', 'serif']
+                    },
+                    colors: {
+                        void: '#030014',
+                        mystic: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            500: '#8b5cf6',
+                            900: '#4c1d95',
+                            950: '#2e1065',
+                        }
+                    },
+                    animation: {
+                        'spin-slow': 'spin 8s linear infinite',
+                        'spin-reverse': 'spin-reverse 12s linear infinite',
+                        'twinkle': 'twinkle 4s ease-in-out infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                        'scroll-vertical': 'scroll-vertical 40s linear infinite',
+                        'scroll-vertical-reverse': 'scroll-vertical-reverse 45s linear infinite',
+                        'pulse-glow': 'pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'glow': 'glow 2s ease-in-out infinite',
+                        'fade-in-up': 'fade-in-up 0.8s ease-out forwards',
+                        'fade-in-down': 'fade-in-down 0.8s ease-out forwards',
+                        'text-reveal': 'text-reveal 0.5s ease-out forwards',
+                        'blink': 'blink 1.2s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        'spin-reverse': { 'from': { transform: 'rotate(360deg)' }, 'to': { transform: 'rotate(0deg)' } },
+                        twinkle: { '0%,100%': { opacity: 0.2, transform: 'scale(1)' }, '50%': { opacity: 1, transform: 'scale(1.5)' } },
+                        float: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-10px)' } },
+                        'scroll-vertical': { '0%': { transform: 'translateY(0)' }, '100%': { transform: 'translateY(-50%)' } },
+                        'scroll-vertical-reverse': { '0%': { transform: 'translateY(-50%)' }, '100%': { transform: 'translateY(0)' } },
+                        'pulse-glow': { '0%,100%': { opacity: 1, boxShadow: '0 0 20px rgba(139, 92, 246, 0.5)' }, '50%': { opacity: .8, boxShadow: '0 0 40px rgba(139, 92, 246, 0.8)' } },
+                        glow: { '0%,100%': { filter: 'drop-shadow(0 0 5px rgba(192, 132, 252, 0.6))' }, '50%': { filter: 'drop-shadow(0 0 15px rgba(192, 132, 252, 0.9))' } },
+                        'fade-in-up': { '0%': { opacity: 0, transform: 'translateY(20px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
+                        'fade-in-down': { '0%': { opacity: 0, transform: 'translateY(-20px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
+                        'text-reveal': { '0%': { opacity: 0, transform: 'translateY(10px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
+                        blink: {
+                            '0%,100%': { boxShadow: '0 0 10px #8b5cf6, 0 0 20px #8b5cf6' },
+                            '50%': { boxShadow: '0 0 20px #c084fc, 0 0 40px #c084fc' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #020617 80%);
+            min-height: 100vh;
+        }
+        
+        .perspective-1000 { perspective: 1000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+
+        .card-flip-inner {
+            transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform-style: preserve-3d;
+        }
+
+        .flipped .card-flip-inner { transform: rotateY(180deg); }
+
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .vortex-ring {
+            position: absolute;
+            border-radius: 50%;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.1);
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .card-pattern {
+            background-image: 
+                radial-gradient(circle at center, transparent 0%, #0f0720 100%),
+                linear-gradient(45deg, rgba(139, 92, 246, 0.1) 25%, transparent 25%, transparent 50%, rgba(139, 92, 246, 0.1) 50%, rgba(139, 92, 246, 0.1) 75%, transparent 75%, transparent);
+            background-size: 100% 100%, 20px 20px;
+        }
+        
+        .border-gradient {
+            background: linear-gradient(#0f0720, #0f0720) padding-box,
+                        linear-gradient(45deg, #4c1d95, #8b5cf6) border-box;
+            border: 1px solid transparent;
+        }
+        
+        /* 手势游戏样式 */
+        #video-container { 
+            position: fixed; 
+            bottom: 20px; 
+            right: 20px; 
+            width: 25vw; 
+            height: 18.75vw;
+            max-width: 240px; 
+            max-height: 180px; 
+            border-radius: 16px; 
+            overflow: hidden; 
+            border: 2px solid #8b5cf6; 
+            z-index: 100; 
+            transform: scaleX(-1); 
+            box-shadow: 0 0 30px rgba(139, 92, 246, 0.4); 
+        }
+        
+        .yang-line { width: 80px; height: 10px; background: #fff; margin: 4px 0; box-shadow: 0 0 10px #8b5cf6; }
+        .yin-line { width: 80px; height: 10px; display: flex; justify-content: space-between; margin: 4px 0; }
+        .yin-line div { width: 35px; height: 10px; background: #fff; box-shadow: 0 0 10px #8b5cf6; }
+        
+        @keyframes float-ui { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        .animate-float-ui { animation: float-ui 4s ease-in-out infinite; }
+        
+        #hand-dot { pointer-events: none; }
+        
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        /* 弹窗遮罩 */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(12px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+        
+        .modal-content {
+            background: rgba(15, 7, 32, 0.85);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 24px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 85vh;
+            overflow-y: auto;
+            position: relative;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transform: translateY(30px);
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .modal-overlay.active .modal-content { transform: translateY(0); }
+        
+        .text-line { opacity: 0; transform: translateY(20px); margin-bottom: 1.5rem; }
+        .text-line.active { opacity: 1; transform: translateY(0); transition: opacity 0.8s ease, transform 0.8s ease; }
+
+        /* 粒子画层 */
+        #particle-canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 5;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 1.2s ease;
+        }
+        #particle-canvas-container.active { opacity: 1; }
+        .particle-canvas { display: block; width: 100%; height: 100%; pointer-events: none; }
+
+        /* 当粒子激活时，卡片视图背景透明 */
+        #view-cards.particle-active { background: transparent !important; }
+        #view-cards.particle-active .absolute.inset-0.pointer-events-none { opacity: 0.3; }
+
+        /* 卡牌最上层 —— 固定为极高z-index，确保永远在粒子之上 */
+        #card-stage { z-index: 10000 !important; }
+
+        /* 增强发光效果（用于粒子消失时） */
+        #focused-card-container.glow-strong {
+            box-shadow: 0 0 80px rgba(139, 92, 246, 0.9), 0 0 150px rgba(139, 92, 246, 0.6) !important;
+            filter: drop-shadow(0 0 30px #c084fc) drop-shadow(0 0 60px #8b5cf6);
+        }
+
+        /* 卦象信息面板 - 调窄宽度，增加高度适应性，不遮挡中心 */
+        .gua-info-panel {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 200;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 2rem;
+            box-sizing: border-box;
+            color: white;
+            font-family: 'Noto Serif SC', serif;
+        }
+        .gua-left, .gua-right {
+            pointer-events: auto;
+            background: rgba(10, 5, 20, 0.65);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            border-radius: 20px;
+            padding: 1.5rem 1.2rem 1.2rem 1.2rem;
+            width: 260px;
+            max-width: 280px;
+            max-height: 90vh; /* 调高以容纳新增内容 */
+            overflow-y: auto;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            transition: opacity 0.5s, transform 0.3s ease, box-shadow 0.3s ease;
+            scrollbar-width: thin;
+            scrollbar-color: #8b5cf6 #2e1065;
+            position: relative;
+        }
+        .gua-left::-webkit-scrollbar, .gua-right::-webkit-scrollbar { width: 4px; }
+        .gua-left::-webkit-scrollbar-track, .gua-right::-webkit-scrollbar-track { background: #2e1065; border-radius: 10px; }
+        .gua-left::-webkit-scrollbar-thumb, .gua-right::-webkit-scrollbar-thumb { background: #8b5cf6; border-radius: 10px; }
+
+        /* 左侧方框悬停效果：放大 + 发光，停止闪烁动画 */
+        .gua-left:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px #c084fc, 0 0 60px #8b5cf6;
+            animation: none;
+        }
+
+        .gua-left { margin-right: auto; }
+        .gua-right { margin-left: auto; }
+
+        /* 卦象序号和名称样式 */
+        .gua-index {
+            font-size: 1.1rem;
+            color: #c4b5fd;
+            margin-bottom: 0.8rem;
+            letter-spacing: 0.05em;
+            border-bottom: 1px dashed rgba(139, 92, 246, 0.3);
+            padding-bottom: 0.4rem;
+            font-weight: 400;
+        }
+        .gua-summary {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            text-shadow: 0 0 10px #c084fc;
+            line-height: 1.3;
+        }
+        .yao-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.4rem;
+            margin-top: 0.5rem;
+        }
+        .story-title {
+            font-size: 1.2rem;
+            font-weight: 500;
+            margin-bottom: 0.8rem;
+            color: #e9d5ff;
+            border-bottom: 1px solid #8b5cf6;
+            padding-bottom: 0.4rem;
+        }
+        .story-text {
+            font-size: 0.95rem;
+            line-height: 1.7;
+            color: #f0eaff;
+            text-align: justify;
+            white-space: pre-wrap;
+        }
+
+        /* 爻辞弹窗 - 放在左侧方框下方 */
+        .yao-popup {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100%;
+            background: rgba(15, 7, 32, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            border-radius: 16px;
+            padding: 1rem;
+            margin-top: 0.5rem;
+            max-height: 60vh;
+            overflow-y: auto;
+            z-index: 300;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+            display: none;
+            scrollbar-width: thin;
+            scrollbar-color: #8b5cf6 #2e1065;
+        }
+        .yao-popup.show { display: block; }
+        .yao-popup::-webkit-scrollbar { width: 4px; }
+        .yao-popup::-webkit-scrollbar-track { background: #2e1065; border-radius: 10px; }
+        .yao-popup::-webkit-scrollbar-thumb { background: #8b5cf6; border-radius: 10px; }
+
+        .yao-item {
+            margin-bottom: 1rem;
+            border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+            padding-bottom: 0.8rem;
+        }
+        .yao-item:last-child { border-bottom: none; }
+        .yao-name {
+            font-weight: 600;
+            color: #c084fc;
+            margin-right: 0.5rem;
+        }
+        .yao-desc {
+            color: #e0e0e0;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* 闪烁动画类 */
+        .gua-left.blink {
+            animation: blink 1.2s ease-in-out infinite;
+        }
+
+        @media (max-width: 1000px) {
+            .gua-left, .gua-right { width: 220px; padding: 1.2rem 1rem 1rem 1rem; }
+            .gua-summary { font-size: 1.2rem; }
+            .gua-index { font-size: 1rem; }
+        }
+        @media (max-width: 700px) {
+            .gua-info-panel { flex-direction: column; align-items: center; justify-content: center; gap: 1rem; }
+            .gua-left, .gua-right { width: 90%; max-width: 90%; margin: 0; }
+        }
+
+        /* ----- 用户要求的字体修改 ----- */
+        /* 三个文化弹窗标题：阿里妈妈东方大楷 */
+        #culture-modal-1 h2,
+        #culture-modal-1 .inline-flex,
+        #culture-modal-2 h2,
+        #culture-modal-2 .inline-flex,
+        #culture-modal-3 h2,
+        #culture-modal-3 .inline-flex,
+        #culture-modal-3 h3 {
+            font-family: '阿里妈妈东方大楷', 'Cinzel', serif !important;
+        }
+
+        /* 三个文化弹窗正文：也字工厂江月令行楷 */
+        #culture-modal-1 p,
+        #culture-modal-1 li,
+        #culture-modal-2 p,
+        #culture-modal-2 li,
+        #culture-modal-3 p,
+        #culture-modal-3 li {
+            font-family: '也字工厂江月令行楷', 'Inter', sans-serif !important;
+        }
+
+        /* 卡牌翻转后左右方框标题字体：阿里妈妈东方大楷 */
+        .gua-left .gua-summary,
+        .gua-left .story-title,
+        .gua-left .gua-index,
+        .gua-left .yao-name,
+        .gua-right .gua-summary,
+        .gua-right .story-title,
+        .gua-right .gua-index,
+        .gua-right .yao-name {
+            font-family: '阿里妈妈东方大楷', 'Cinzel', serif !important;
+        }
+
+        /* 卡牌翻转后左右方框正文字体：也字工厂江月令行楷 */
+        .gua-left .story-text,
+        .gua-left .yao-desc,
+        .gua-right .story-text,
+        .gua-right .yao-desc {
+            font-family: '也字工厂江月令行楷', 'Inter', sans-serif !important;
+        }
+
+        /* 荧光笔高亮样式 */
+        .highlight {
+            background: rgba(255, 235, 100, 0.4); /* 柔和的荧光黄色，半透明 */
+            padding: 0 2px;
+            border-radius: 2px;
+            color: inherit;
+        }
+
+        /* 新增爻辞注释区域样式微调 */
+        .yao-commentary {
+            border-top: 1px solid rgba(139, 92, 246, 0.2);
+            margin-top: 1rem;
+            padding-top: 0.75rem;
+        }
+        .yao-commentary .story-title {
+            font-size: 1rem;
+            margin-bottom: 0.4rem;
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        .yao-commentary .story-text {
+            font-size: 0.75rem;
+            line-height: 1.6;
+            color: #d8d0f0;
+        }
+        /* 点击提示图标容器不再绝对定位，采用流式布局 */
+        .click-hint {
+            margin-top: 0.75rem;
+            margin-bottom: 0.25rem;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        /* ---------- 手势交互（从 `手势交互/手势交互.html` 合并的关键样式补齐） ---------- */
+        #view-control-hint {
+            position: fixed; top: 20px; right: 20px; z-index: 100;
+            background: rgba(0, 0, 0, 0.7); padding: 10px 15px; border-radius: 8px;
+            border: 1px solid rgba(139, 92, 246, 0.5); backdrop-filter: blur(5px);
+            max-width: 250px; font-size: 12px; line-height: 1.5;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        #view-control-hint h3 { color: #8b5cf6; margin-bottom: 8px; font-size: 14px; font-weight: bold; }
+        #view-control-hint ul { list-style: none; padding: 0; margin: 0; }
+        #view-control-hint li { margin-bottom: 5px; display: flex; align-items: center; }
+        #view-control-hint .icon { margin-right: 8px; color: #a78bfa; }
+
+        #view-indicator {
+            position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%);
+            z-index: 100; background: rgba(0, 0, 0, 0.5); padding: 8px 16px;
+            border-radius: 20px; backdrop-filter: blur(5px); border: 1px solid rgba(139, 92, 246, 0.3);
+            font-size: 12px; color: #a78bfa; white-space: nowrap;
+            transition: opacity 0.3s ease;
+        }
+
+        #particle-hint {
+            position: fixed; bottom: 20px; left: 20px; z-index: 100;
+            background: rgba(0, 0, 0, 0.5); padding: 8px 12px; border-radius: 8px;
+            border: 1px solid rgba(139, 92, 246, 0.3); backdrop-filter: blur(5px);
+            font-size: 11px; color: #a78bfa; max-width: 200px;
+        }
+
+        #cam-container {
+            position: fixed; bottom: 20px; right: 20px;
+            width: 150px; height: 112px; z-index: 220;
+            border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 8px; overflow: hidden;
+            background: #000; transform: scaleX(-1); opacity: 0.4;
+            transition: opacity 0.3s;
+        }
+        #cam-container:hover { opacity: 0.8; }
+        #cam-video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.2; }
+        #output-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 6; }
+
+        #mahjong-particle-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            pointer-events: none;
+            z-index: 1;
+        }
+        #gua-modal {
+            background: transparent !important;
+            backdrop-filter: none !important;
+        }
+        #gua-modal .absolute, #gua-visual-container {
+            z-index: 2;
+        }
+    </style>
+</head>
+<body class="text-white overflow-hidden relative selection:bg-purple-500/30 font-sans antialiased">
+
+    <!-- 加载层（用于麻将手势互动） -->
+    <div id="loading-overlay" class="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-[#030014]" style="display:none; opacity:0;">
+        <div class="relative w-24 h-24 mb-6" id="loader-icon">
+            <div class="absolute inset-0 border-4 border-purple-500/20 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+        <h2 id="loading-text" class="text-2xl font-serif text-purple-300 animate-pulse text-center px-4">
+            正在初始化144张卡牌...
+        </h2>
+        <div id="progress-container-bar" class="w-64 h-2 bg-gray-800 rounded-full mt-4 overflow-hidden">
+            <div id="progress-inner" class="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+        <div id="debug-info" class="mt-4 text-purple-300 text-sm hidden">
+            <div id="back-load-status" class="mb-1"></div>
+            <div id="front-load-status" class="mb-1"></div>
+        </div>
+        <p id="error-hint" class="hidden mt-4 text-red-400 text-sm max-w-xs text-center">
+            无法调用摄像头。请检查是否被其他应用占用。
+        </p>
+    </div>
+
+    <!-- 摄像头容器 -->
+    <div id="cam-container" class="hidden">
+        <video id="cam-video" playsinline muted autoplay></video>
+        <canvas id="output-canvas"></canvas>
+    </div>
+
+    <!-- 三个文化弹窗 (完整保留) -->
+    <div id="culture-modal-1" class="modal-overlay">
+        <div class="modal-content p-8 md:p-12">
+            <div class="absolute top-4 right-4">
+                <button onclick="closeCultureModal(1)" class="p-2 rounded-full hover:bg-white/10 transition-all duration-300">
+                    <iconify-icon icon="lucide:x" width="24" class="text-purple-300"></iconify-icon>
+                </button>
+            </div>
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-300 text-sm tracking-widest uppercase mb-4">
+                    <span class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>文化正名
+                </div>
+                <h2 class="text-3xl md:text-4xl font-serif text-white mb-4 tracking-tight">打破世俗偏见，还原文化本真</h2>
+                <div class="h-px w-24 mx-auto bg-gradient-to-r from-transparent via-purple-500 to-transparent"></div>
+            </div>
+            <div id="culture-text-1" class="space-y-6 text-lg leading-relaxed text-white/80 font-serif-sc">
+                <p class="text-line">世人常将易经卦象与"算命占卜"绑定，视麻将为"赌博消遣"，这是对<span class="highlight">中华优秀传统文化</span>的片面解读与误读。</p>
+                <p class="text-line">易经作为<span class="highlight">群经之首、大道之源</span>，64卦象藏着古人对宇宙规律、人生境遇的深刻洞察，从不是封建迷信的载体，而是在困境中给予人<span class="highlight">精神支撑</span>、在迷茫时指引方向的<span class="highlight">智慧典籍</span>；麻将作为流淌在国人生活中的国粹，也绝非单纯的博弈工具，其内核蕴含着<span class="highlight">易经"天地人和"的哲学思想</span>与<span class="highlight">运筹帷幄的策略智慧</span>。</p>
+                <p class="text-line">本网站，旨在<span class="highlight">打破这些世俗偏见</span>，为易经与麻将文化正名。我愿以交互为桥梁，让大家读懂64卦象中"穷则变、变则通"的<span class="highlight">生存智慧</span>，感受其在人生挫折中给予的<span class="highlight">慰藉与鼓励</span>；也愿带大家探寻麻将与易经的深层联结，看见国粹背后的<span class="highlight">文化底蕴与积极价值</span>，让这些承载着中华文脉的瑰宝，以更鲜活的方式传承下去，滋养当代人的精神世界。</p>
+            </div>
+            <div class="mt-10 pt-8 border-t border-white/10">
+                <button onclick="closeCultureModal(1)" id="explore-btn" class="w-full md:w-auto px-10 py-4 bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-500 hover:to-purple-700 rounded-full font-medium tracking-wide transition-all duration-300 text-lg shadow-lg shadow-purple-900/30 flex items-center justify-center gap-3 mx-auto opacity-0 transform translate-y-4">
+                    开始探索吧 <iconify-icon icon="lucide:arrow-right" width="20"></iconify-icon>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="culture-modal-2" class="modal-overlay">
+        <div class="modal-content p-8 md:p-12">
+            <div class="absolute top-4 right-4">
+                <button onclick="closeCultureModal(2)" class="p-2 rounded-full hover:bg-white/10 transition-all duration-300">
+                    <iconify-icon icon="lucide:x" width="24" class="text-purple-300"></iconify-icon>
+                </button>
+            </div>
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-300 text-sm tracking-widest uppercase mb-4">
+                    <span class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>易经智慧
+                </div>
+                <h2 class="text-3xl md:text-4xl font-serif text-white mb-4 tracking-tight">易经64卦——穿越千年的精神指引</h2>
+                <div class="h-px w-24 mx-auto bg-gradient-to-r from-transparent via-purple-500 to-transparent"></div>
+            </div>
+            <div class="space-y-6 text-lg leading-relaxed text-white/80 font-serif-sc">
+                <p>易经64卦，是古人对自然、社会、人生的系统性总结，是<span class="highlight">中华优秀传统文化的重要载体</span>。每一卦都对应着一种人生境遇，既有"乾卦"自强不息、锐意进取的昂扬，也有"坎卦"历经险阻、坚守本心的坚韧；既有"否卦"否极泰来的希望，也有"谦卦"虚怀若谷的修为。</p>
+                <p>当我们遭遇挫折、陷入迷茫时，卦象所传递的不是宿命的定论，而是<span class="highlight">辩证的思维与积极的启示</span>。它提醒我们，人生本就是阴阳相生、祸福相依的过程，困境是成长的契机，低谷是反弹的铺垫。抽取一卦，不是求一个"标准答案"，而是<span class="highlight">与千年智慧对话</span>，从卦象的解读中<span class="highlight">汲取直面困境的勇气</span>、调整心态的通透，学会以更豁达、更理性的视角看待人生起伏，这便是易经64卦留给我们最珍贵的精神财富。</p>
+            </div>
+            <div class="mt-10 pt-8 border-t border-white/10 flex justify-end">
+                <button onclick="closeCultureModal(2)" class="px-8 py-3 bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-500 hover:to-purple-700 rounded-full font-medium tracking-wide transition-all duration-300 shadow-lg shadow-purple-900/30 flex items-center gap-3">
+                    进入卦象世界 <iconify-icon icon="lucide:arrow-right" width="20"></iconify-icon>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="culture-modal-3" class="modal-overlay">
+        <div class="modal-content p-8 md:p-12">
+            <div class="absolute top-4 right-4">
+                <button onclick="closeCultureModal(3)" class="p-2 rounded-full hover:bg-white/10 transition-all duration-300">
+                    <iconify-icon icon="lucide:x" width="24" class="text-purple-300"></iconify-icon>
+                </button>
+            </div>
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-sm tracking-widest uppercase mb-4">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>国粹探源
+                </div>
+                <h2 class="text-3xl md:text-4xl font-serif text-white mb-4 tracking-tight">麻将——藏在国粹里的易经智慧</h2>
+                <div class="h-px w-24 mx-auto bg-gradient-to-r from-transparent via-emerald-500 to-transparent"></div>
+            </div>
+            <div class="space-y-6 text-lg leading-relaxed text-white/80 font-serif-sc mb-8">
+                <p>麻将的起源与易经文化一脉相承，其核心早已超越了"输赢博弈"，成为<span class="highlight">承载古人哲学思想与生活智慧的载体</span>。从规则到内涵，麻将处处藏着<span class="highlight">易经"天地人和"的理念</span>：牌面中万、条、饼三类对应"天、地、人"三才，每类14张牌暗合天地循环之数，而游戏中的对弈、攻防兼顾，正是<span class="highlight">"和而不同、相生相克"</span>的易经思维体现。</p>
+                <p>麻将绝非单纯的运气比拼，更考验着人的<span class="highlight">策略布局、取舍智慧与全局观</span>——如同易经所倡导的"审时度势、顺势而为"，每一次出牌、吃碰杠胡，都是对当下局势的判断与决策，教会我们在复杂环境中<span class="highlight">权衡利弊、把握分寸</span>。它曾是古人修身养性、增进情谊的社交方式，传递的是<span class="highlight">"戒躁戒贪、适可而止"的生活态度</span>。今天，我们以小游戏的形式探寻二者关联，便是为了剥离其被异化的赌博标签，还原麻将的文化本质，让大家看见国粹背后的易经智慧与积极价值。</p>
+            </div>
+            <div class="bg-gradient-to-r from-emerald-900/20 to-purple-900/20 rounded-2xl p-6 border border-emerald-500/20 mb-8">
+                <h3 class="text-xl font-serif text-emerald-300 mb-4 flex items-center gap-2"><iconify-icon icon="lucide:gamepad-2" width="24"></iconify-icon>玩法说明</h3>
+                <ul class="space-y-3 text-white/70 text-sm md:text-base">
+                    <li class="flex items-start gap-2"><iconify-icon icon="lucide:circle" width="12" class="text-emerald-400 mt-1"></iconify-icon><span>请将手放在摄像头前，待识别到手之后出现蓝色光标，游戏即可开始</span></li>
+                    <li class="flex items-start gap-2"><iconify-icon icon="lucide:circle" width="12" class="text-emerald-400 mt-1"></iconify-icon><span>做出抓取或手指捏合手势，将在漂浮的144张麻将牌中随机抓取一张</span></li>
+                    <li class="flex items-start gap-2"><iconify-icon icon="lucide:circle" width="12" class="text-emerald-400 mt-1"></iconify-icon><span>筒子牌代表天，条子牌代表地，万代表天地之间的万物</span></li>
+                    <li class="flex items-start gap-2"><iconify-icon icon="lucide:circle" width="12" class="text-emerald-400 mt-1"></iconify-icon><span>根据牌型的单双数对应阴爻和阳爻，一次抽取六张，按抽取顺序从上到下排列形成64卦之一</span></li>
+                    <li class="flex items-start gap-2"><iconify-icon icon="lucide:circle" width="12" class="text-emerald-400 mt-1"></iconify-icon><span>如果抽到花牌或中、发、白则卦象不成立，需要重新抽取（特殊情况：由于八卦遵循物极必反阳极阴生，六筒（极阴）属阳，三条(少阳)属阴）</span></li>
+                </ul>
+            </div>
+            <div class="mt-6 pt-8 border-t border-white/10 flex justify-between items-center">
+                <button onclick="startGestureInteractionPage()" class="text-sm text-white/40 hover:text-white transition-colors font-light">关闭弹窗进入小游戏，体验麻将与易经的智慧联结</button>
+                <button onclick="startGestureInteractionPage()" class="px-8 py-3 bg-gradient-to-r from-emerald-600 to-emerald-800 hover:from-emerald-500 hover:to-emerald-700 rounded-full font-medium tracking-wide transition-all duration-300 shadow-lg shadow-emerald-900/30 flex items-center gap-3">
+                    开始游戏 <iconify-icon icon="lucide:play" width="20"></iconify-icon>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Background Stars Container -->
+    <div id="stars-container" class="fixed inset-0 pointer-events-none z-0"></div>
+
+    <!-- 设置图标 -->
+    <button id="settings-btn" onclick="showDeveloperInfo()" class="fixed top-6 right-6 z-50 p-3 rounded-full glass-panel hover:bg-white/5 transition-all duration-300 group">
+        <iconify-icon icon="lucide:settings" width="24" class="text-[#C084FC] group-hover:animate-glow"></iconify-icon>
+    </button>
+
+    <!-- 音乐控制图标 -->
+    <button id="music-btn" onclick="toggleBackgroundMusic()" class="fixed bottom-6 right-6 z-50 p-3 rounded-full glass-panel hover:bg-white/5 transition-all duration-300 group">
+        <iconify-icon icon="lucide:music" width="24" class="text-[#C084FC] group-hover:animate-glow" id="music-icon"></iconify-icon>
+    </button>
+
+    <!-- 开发者信息界面 -->
+    <div id="developer-info" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div onclick="event.stopPropagation()" class="relative max-w-md w-full glass-panel rounded-2xl p-8 border border-purple-500/30">
+            <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 px-4 py-1 rounded-full bg-void border border-purple-500/50">
+                <h2 class="text-lg font-serif text-white tracking-wider">开发者信息</h2>
+            </div>
+            <div class="space-y-6 mt-4">
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between"><span class="text-white/60 text-sm">开发者：</span><span class="text-white font-medium">许天应、代欣妍</span></div>
+                    <div class="flex items-center justify-between"><span class="text-white/60 text-sm">学校：</span><span class="text-white font-medium">武汉纺织大学</span></div>
+                    <div class="flex items-center justify-between"><span class="text-white/60 text-sm">班级：</span><span class="text-white font-medium">数媒12201班</span></div>
+                    <div class="flex items-center justify-between"><span class="text-white/60 text-sm">指导老师：</span><span class="text-white font-medium">熊菊</span></div>
+                </div>
+                <div class="h-px w-full bg-gradient-to-r from-transparent via-purple-500/30 to-transparent"></div>
+                <div class="space-y-4">
+                    <h3 class="text-white font-serif text-lg">负责板块</h3>
+                    <div class="space-y-3">
+                        <div class="bg-purple-900/20 rounded-lg p-4 border border-purple-500/20">
+                            <h4 class="text-[#C084FC] font-medium mb-2">许天应</h4>
+                            <p class="text-white/80 text-sm leading-relaxed">界面设计搭建、交互设计、手势交互搭建、Three.js 3D场景实现、UI/UX优化</p>
+                        </div>
+                        <div class="bg-purple-900/20 rounded-lg p-4 border border-purple-500/20">
+                            <h4 class="text-[#C084FC] font-medium mb-2">代欣妍</h4>
+                            <p class="text-white/80 text-sm leading-relaxed">视觉设计、卡牌设计、麻将造型设计、色彩方案</p>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="hideDeveloperInfo()" class="w-full mt-6 py-3 rounded-lg bg-purple-600 hover:bg-purple-500 transition-all duration-300 text-white font-medium">返回首页</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 粒子画布容器 -->
+    <div id="particle-canvas-container">
+        <canvas id="particle-canvas" class="particle-canvas"></canvas>
+    </div>
+
+    <!-- Main App Container -->
+    <main id="app" class="relative z-10 w-full h-screen flex flex-col items-center justify-center">
+        <!-- View 1: Home Selection -->
+        <div id="view-home" class="flex flex-col items-center gap-12 w-full max-w-4xl p-6 transition-opacity duration-700">
+            <header class="text-center space-y-4">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-300 text-xs tracking-widest uppercase mb-4 font-medium">
+                    <span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>Ancient Wisdom
+                </div>
+                <h1 class="font-serif text-5xl md:text-7xl font-semibold tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white via-purple-100 to-purple-900 drop-shadow-lg pb-2">易理 &amp; 牌韵</h1>
+                <p class="text-white/60 font-light tracking-wide max-w-md mx-auto text-sm md:text-base">了解易经的古老智慧，在游戏中探索国粹麻将与易经古老智慧的交织.</p>
+            </header>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                <button onclick="goToBaguaWithIntro()" class="group relative h-64 rounded-2xl overflow-hidden glass-panel hover:border-purple-500/50 transition-all duration-500 hover:shadow-[0_0_30px_rgba(139,92,246,0.2)] text-left p-8 flex flex-col justify-between">
+                    <div class="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <div class="relative z-10">
+                        <iconify-icon icon="game-icons:yin-yang" width="48" class="text-purple-300 mb-4 group-hover:scale-110 transition-transform duration-500"></iconify-icon>
+                        <h2 class="text-2xl font-serif font-semibold text-white mb-2 tracking-tight">易理 卦象</h2>
+                        <p class="text-sm text-white/50 leading-relaxed font-light">查阅卦象以获取每日指导与古老智慧.</p>
+                    </div>
+                    <div class="relative z-10 flex items-center gap-2 text-purple-300 text-sm font-medium opacity-60 group-hover:opacity-100 transition-opacity">Enter Void <iconify-icon icon="lucide:arrow-right" width="16"></iconify-icon></div>
+                </button>
+                <button onclick="goToMahjongWithIntro()" class="group relative h-64 rounded-2xl overflow-hidden glass-panel hover:border-emerald-500/50 transition-all duration-500 hover:shadow-[0_0_30px_rgba(16,185,129,0.2)] text-left p-8 flex flex-col justify-between">
+                    <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <div class="relative z-10">
+                        <iconify-icon icon="game-icons:domino-tiles" width="48" class="text-emerald-300 mb-4 group-hover:scale-110 transition-transform duration-500"></iconify-icon>
+                        <h2 class="text-2xl font-serif font-semibold text-white mb-2 tracking-tight">牌韵 麻将</h2>
+                        <p class="text-sm text-white/50 leading-relaxed font-light">进入牌韵领域，探索藏在国粹里的易经智慧.</p>
+                    </div>
+                    <div class="relative z-10 flex items-center gap-2 text-emerald-300 text-sm font-medium opacity-60 group-hover:opacity-100 transition-opacity">Play Game <iconify-icon icon="lucide:arrow-right" width="16"></iconify-icon></div>
+                </button>
+            </div>
+        </div>
+
+        <!-- View 2: Bagua Intro -->
+        <div id="view-intro" class="hidden flex flex-col items-center text-center gap-8 max-w-2xl p-6 animate-fade-in">
+            <div class="relative">
+                <div class="absolute inset-0 bg-purple-500/20 blur-3xl rounded-full"></div>
+                <iconify-icon icon="game-icons:bagua-mirror" width="120" class="relative text-white/90 drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]"></iconify-icon>
+            </div>
+            <div class="space-y-4">
+                <h2 class="text-4xl md:text-5xl font-serif font-semibold tracking-tight text-white">选择在你</h2>
+                <p class="text-white/60 text-lg font-light">请集中注意在你想问的问题上，选则属于你的一则卦象.</p>
+            </div>
+            <button onclick="startDivination()" class="group relative px-8 py-4 bg-white text-black rounded-full font-medium tracking-wide hover:scale-105 transition-transform duration-300 overflow-hidden shadow-lg shadow-purple-900/20">
+                <span class="relative z-10 flex items-center gap-2 text-sm font-semibold">点击开始<iconify-icon icon="lucide:sparkles" width="16" class="group-hover:rotate-12 transition-transform"></iconify-icon></span>
+                <div class="absolute inset-0 bg-purple-200 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+            </button>
+            <button onclick="goHome()" class="text-sm text-white/30 hover:text-white transition-colors mt-8 font-light">Cancel</button>
+        </div>
+
+        <!-- View 3: Vortex Animation -->
+        <div id="view-vortex" class="hidden relative w-full h-full flex items-center justify-center">
+            <div class="relative w-[600px] h-[600px] flex items-center justify-center scale-50 md:scale-100">
+                <div class="vortex-ring w-[500px] h-[500px] animate-spin-slow border-t-purple-400/50"></div>
+                <div class="vortex-ring w-[400px] h-[400px] animate-spin-reverse border-b-purple-300/50 opacity-80"></div>
+                <div class="vortex-ring w-[300px] h-[300px] animate-spin-slow border-l-fuchsia-400/50 opacity-60"></div>
+                <div class="vortex-ring w-[200px] h-[200px] animate-spin-reverse border-r-indigo-400/50 opacity-40"></div>
+                <div class="absolute inset-0 bg-purple-900/10 blur-[100px] rounded-full animate-pulse"></div>
+                <div class="text-white font-serif text-2xl tracking-[0.5em] animate-pulse font-light">LOADING</div>
+            </div>
+        </div>
+
+        <!-- View 4: Sliding Cards -->
+        <div id="view-cards" class="hidden absolute inset-0 w-full h-full overflow-x-auto overflow-y-hidden no-scrollbar bg-void/90">
+            <div class="absolute inset-0 pointer-events-none">
+                <div class="absolute top-0 left-1/4 w-96 h-96 bg-purple-900/20 blur-[100px] rounded-full"></div>
+                <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-indigo-900/20 blur-[100px] rounded-full"></div>
+            </div>
+            <div id="card-columns" class="relative z-10 w-full h-full flex justify-start items-center gap-4 md:gap-8 px-4 perspective-1000 transition-opacity duration-1000"></div>
+            <div id="card-stage" class="absolute inset-0 z-20 hidden flex items-center justify-center pointer-events-none">
+                <div id="focused-card-container" class="w-[300px] h-[450px] md:w-[360px] md:h-[540px] relative perspective-1000 pointer-events-auto cursor-pointer transition-all duration-700"></div>
+            </div>
+            <!-- 卦象信息面板容器 -->
+            <div id="gua-info-panel" class="gua-info-panel hidden"></div>
+            <button id="return-btn" onclick="goHome()" class="absolute bottom-8 right-8 z-30 hidden px-6 py-2.5 rounded-full border border-white/10 bg-white/5 backdrop-blur text-white/70 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-500 opacity-0 transform translate-y-4 font-light text-xs tracking-wider uppercase flex items-center gap-2 group">
+                Return to Sanctuary <iconify-icon icon="lucide:arrow-right" class="group-hover:translate-x-0.5 transition-transform"></iconify-icon>
+            </button>
+        </div>
+
+        <!-- View 5: Mahjong Gesture Game（使用原始手势交互页面 iframe） -->
+        <div id="view-mahjong" class="hidden fixed inset-0 w-full h-full overflow-hidden bg-void">
+            <div class="absolute top-6 left-6 z-[210] pointer-events-auto">
+                <button onclick="exitEmbeddedGestureInteraction()" class="px-5 py-2.5 rounded-full border border-white/10 bg-white/5 backdrop-blur text-white/80 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-300 text-sm flex items-center gap-2">
+                    <iconify-icon icon="lucide:arrow-left" width="18"></iconify-icon>返回
+                </button>
+            </div>
+            <iframe
+                id="gesture-iframe"
+                title="手势交互"
+                class="absolute inset-0 w-full h-full border-0"
+                src="../手势交互.html"
+                allow="camera; microphone; autoplay"
+            ></iframe>
+        </div>
+    </main>
+
+    <!-- 背景音乐播放器 -->
+    <audio id="background-music" loop>
+        <source src="https://audio.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260116/xbTu/5ec8f58b4d90b3902a2679d6ee654a3d.mp3" type="audio/mpeg">
+    </audio>
+
+    <script>
+        // ---------- 初始化、弹窗、导航、卡牌逻辑 ----------
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => { showCultureModal(1); }, 800);
+            backgroundMusic.play().catch(() => { isMusicPlaying = false; updateMusicIcon(); });
+        });
+
+        function showCultureModal(modalNumber) {
+            const modal = document.getElementById(`culture-modal-${modalNumber}`);
+            modal.classList.add('active');
+            if (modalNumber === 1) {
+                const textLines = document.querySelectorAll('#culture-text-1 .text-line');
+                let delay = 300;
+                textLines.forEach((line, index) => {
+                    setTimeout(() => {
+                        line.classList.add('active');
+                        if (index === textLines.length - 1) {
+                            setTimeout(() => {
+                                const exploreBtn = document.getElementById('explore-btn');
+                                exploreBtn.classList.remove('opacity-0', 'translate-y-4');
+                                exploreBtn.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+                                exploreBtn.style.opacity = '1';
+                                exploreBtn.style.transform = 'translateY(0)';
+                            }, 500);
+                        }
+                    }, delay);
+                    delay += 1000;
+                });
+            }
+        }
+
+        function closeCultureModal(modalNumber) {
+            const modal = document.getElementById(`culture-modal-${modalNumber}`);
+            modal.classList.remove('active');
+            if (modalNumber === 2) {
+                setTimeout(() => switchView('intro'), 300);
+            }
+            // modal 3 的关闭与进入游戏逻辑由 startGestureInteractionPage 控制
+        }
+
+        function startGestureInteractionPage() {
+            const modal = document.getElementById('culture-modal-3');
+            if (modal) modal.classList.remove('active');
+            setTimeout(() => {
+                startEmbeddedGestureInteraction();
+            }, 300);
+        }
+
+        function startEmbeddedGestureInteraction() {
+            switchView('mahjong');
+            const iframe = document.getElementById('gesture-iframe');
+            if (!iframe) return;
+            // 重新设置 src，确保每次进入都刷新手势交互页面
+            iframe.src = '../手势交互.html';
+        }
+
+        function exitEmbeddedGestureInteraction() {
+            const iframe = document.getElementById('gesture-iframe');
+            if (iframe) {
+                iframe.src = 'about:blank';
+            }
+            goHome();
+        }
+
+        function goToBaguaWithIntro() { showCultureModal(2); }
+        function goToMahjongWithIntro() {
+            // 只打开麻将说明弹窗，不直接启动手势游戏
+            showCultureModal(3);
+        }
+
+        const cardBackUrl = "https://img.heliar.top/file/1773313002535_卡背修改版.png";
+        const fallbackCardBack = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='300' viewBox='0 0 200 300'%3E%3Crect width='200' height='300' fill='%232d1b4e'/%3E%3Ctext x='20' y='150' fill='%239b87c7' font-size='20' font-family='Arial'%3E卦象%3C/text%3E%3C/svg%3E";
+
+        let isMusicPlaying = true;
+        const backgroundMusic = document.getElementById('background-music');
+        const musicIcon = document.getElementById('music-icon');
+        function toggleBackgroundMusic() {
+            if (isMusicPlaying) backgroundMusic.pause();
+            else backgroundMusic.play().catch(console.log);
+            isMusicPlaying = !isMusicPlaying;
+            updateMusicIcon();
+        }
+        function updateMusicIcon() {
+            if (isMusicPlaying) {
+                musicIcon.classList.add('animate-glow');
+                musicIcon.setAttribute('icon', 'lucide:music');
+            } else {
+                musicIcon.classList.remove('animate-glow');
+                musicIcon.setAttribute('icon', 'lucide:music-2');
+            }
+        }
+
+        // 星空背景
+        const starContainer = document.getElementById('stars-container');
+        for(let i = 0; i < 60; i++) {
+            const star = document.createElement('div');
+            star.className = 'star animate-twinkle';
+            star.style.width = Math.random() * 2 + 'px';
+            star.style.height = star.style.width;
+            star.style.left = Math.random() * 100 + 'vw';
+            star.style.top = Math.random() * 100 + 'vh';
+            star.style.animationDelay = Math.random() * 5 + 's';
+            star.style.opacity = Math.random() * 0.5;
+            starContainer.appendChild(star);
+        }
+
+        function showDeveloperInfo() {
+            document.getElementById('developer-info').classList.remove('hidden');
+            document.getElementById('developer-info').addEventListener('click', function(e) {
+                if(e.target === this) hideDeveloperInfo();
+            });
+        }
+        function hideDeveloperInfo() { document.getElementById('developer-info').classList.add('hidden'); }
+
+        // 64卦图片URL (保持不变)
+        const guaImageUrls = [ 
+            "https://img.heliar.top/file/1771924100384_1.png","https://img.heliar.top/file/1771924128541_2.png","https://img.heliar.top/file/1771924233460_3.png","https://img.heliar.top/file/1771924542456_4.png",
+            "https://img.heliar.top/file/1771924547039_5.png","https://img.heliar.top/file/1771924545156_6.png","https://img.heliar.top/file/1771924549033_7.png","https://img.heliar.top/file/1771924550029_8.png",
+            "https://img.heliar.top/file/1771924547920_9.png","https://img.heliar.top/file/1771924835807_10.png","https://img.heliar.top/file/1771924815667_11.png","https://img.heliar.top/file/1771924838337_12.png",
+            "https://img.heliar.top/file/1771925124771_13.png","https://img.heliar.top/file/1771926177555_14.png","https://img.heliar.top/file/1771925118008_15.png","https://img.heliar.top/file/1771926206275_16.png",
+            "https://img.heliar.top/file/1771926207814_17.png","https://img.heliar.top/file/1771925122008_18.png","https://img.heliar.top/file/1771925132841_19.png","https://img.heliar.top/file/1771925129096_20.png",
+            "https://img.heliar.top/file/1771926219147_21.png","https://img.heliar.top/file/1771925367355_22.png","https://img.heliar.top/file/1771926221172_23.png","https://img.heliar.top/file/1771926231961_24.png",
+            "https://img.heliar.top/file/1771925389714_25.png","https://img.heliar.top/file/1771926463473_26.png","https://img.heliar.top/file/1771926491400_27.png","https://img.heliar.top/file/1771926503343_28.png",
+            "https://img.heliar.top/file/1771926493062_29.png","https://img.heliar.top/file/1771925386636_30.png","https://img.heliar.top/file/1771925392591_31.png","https://img.heliar.top/file/1771926500730_32.png",
+            "https://img.heliar.top/file/1771926519340_33.png","https://img.heliar.top/file/1771926736793_34.png","https://img.heliar.top/file/1771926761521_35.png","https://img.heliar.top/file/1771926756377_36.png",
+            "https://img.heliar.top/file/1771926765772_37.png","https://img.heliar.top/file/1771926775034_38.png","https://img.heliar.top/file/1771926758622_39.png","https://img.heliar.top/file/1771927002248_40.png",
+            "https://img.heliar.top/file/1771925396253_41.png","https://img.heliar.top/file/1771927029295_42.png","https://img.heliar.top/file/1771925405411_43.png","https://img.heliar.top/file/1771925655428_44.png",
+            "https://img.heliar.top/file/1771927032045_45.png","https://img.heliar.top/file/1771925665075_46.png","https://img.heliar.top/file/1771925672454_47.png","https://img.heliar.top/file/1771925669174_48.png",
+            "https://img.heliar.top/file/1771927030330_49.png","https://img.heliar.top/file/1771927032391_50.png","https://img.heliar.top/file/1771927095520_51.png","https://img.heliar.top/file/1771925940376_52.png",
+            "https://img.heliar.top/file/1771927044674_53.png","https://img.heliar.top/file/1771925945221_54.png","https://img.heliar.top/file/1771924830163_55.png","https://img.heliar.top/file/1771925683281_56.png",
+            "https://img.heliar.top/file/1771925688525_57.png","https://img.heliar.top/file/1771925927297_58.png","https://img.heliar.top/file/1771924836371_59.png","https://img.heliar.top/file/1771925103472_60.png",
+            "https://img.heliar.top/file/1771924843236_61.png","https://img.heliar.top/file/1771925959043_62.png","https://img.heliar.top/file/1771925956587_63.png","https://img.heliar.top/file/1771925962136_64.png"
+        ];
+
+        // ================= 64卦详细数据（包含爻辞，完全依据文档） =================
+        const guaDetails = [
+            { id:0, name:'乾卦', yao:'--- --- --- --- --- ---', summary:'苍穹潜龙，云程待启', story:'夜幕低垂时，苍穹深处藏着一条潜龙，它沉眠于星云流转的静谧里，不急于舒展鳞甲。待晨曦划破天际，它先探首于晨雾弥漫的田垄，再腾跃于霞光漫天的苍穹，最终敛翅于云巅——知晓极致的翱翔后，当留一份谦和与沉稳。这是天道轮回的静谧节律，是刚健之中藏收敛的神秘平衡。\n\n【当下鼓励】你此刻的沉潜，皆是苍穹为你铺就的云程伏笔，不必焦虑，待风起时，自有霞光为你引路，把握时机，坚守正道，让你的生命在刚健与智慧的指引下，绽放出绚丽光彩。' },
+            { id:1, name:'坤卦', yao:'-- -- -- -- -- --', summary:'厚土承霜，柔德载光', story:'暮色中的厚土，静默承载着第一片寒霜的轻吻，它知晓霜落之后便是坚冰，却依旧以温柔接纳万物。母马踏着霜华缓步前行，蹄印深浅间，藏着顺应时序的智慧；收紧的囊袋里，装着不事张扬的静谧，不渴求赞誉，亦不畏惧沉寂，这是大地最深厚的神秘馈赠——柔德可载万物，静可纳千光。\n\n【当下鼓励】你今日的温柔与隐忍，皆是厚土般的德行积淀，那些不为人知的沉寂，终将滋养出属于你的繁花遍野。' },
+            { id:2, name:'屯卦', yao:'-- --- -- -- -- ---', summary:'春涧新芽，破岩而生', story:'春雷初醒时，山涧的冻土下藏着一丝新芽，上方是湍急的流水（险），身旁是震彻的雷声（动），它在艰险中悄然扎根，不急于舒展嫩叶。它知晓初生的艰难，便以静默对抗风雨，在徘徊中凝聚力量，如同远古先民建国封侯般，步步为营筑牢根基，这是生命初始最纯粹的神秘韧性。\n\n【当下鼓励】你此刻的艰难，是生命扎根的必经之路，不必急于求成，在静默中积蓄的力量，终将支撑你破岩而出。' },
+            { id:3, name:'蒙卦', yao:'--- -- -- -- --- --', summary:'山雾蒙泉，启智寻光', story:'晨雾缭绕的山峦间，藏着一汪清冽的泉眼，泉水初涌时，混沌如蒙童，需借一缕晨光指引方向。有智者循着雾霭而来，以温柔的话语拨开混沌，如同细雨滋润干涸的心田，让蒙昧的种子在静谧中苏醒，这是智慧启蒙最神秘的过程——在迷雾中寻光，在静谧中觉醒。\n\n【当下鼓励】你此刻的迷茫，是智慧觉醒的前兆，如同山雾终将散去，只要心怀寻光的执念，便会遇见照亮前路的微光。' },
+            { id:4, name:'需卦', yao:'-- --- -- --- --- ---', summary:'云聚待雨，静待其时', story:'晴空之上，云絮缓缓汇聚，它们不疾不徐，在苍穹中勾勒出静谧的轮廓。远方的旅人知晓，降雨未至时，需在树荫下静默等候，不可贸然前行。云聚成雨的过程，是时序的神秘安排，是"待"的智慧——唯有耐心等候，才能迎来甘霖滋润心田。\n\n【当下鼓励】你此刻的等待，不是停滞，而是为了迎接一场恰逢其时的甘霖，安心守候，时光自会为你送来惊喜。' },
+            { id:5, name:'讼卦', yao:'--- --- --- -- --- --', summary:'风激水荡，和为归处', story:'狂风掠过水面，激起千层浪，浪涛相击，如同人与人之间的纷争。可风终会停歇，浪终会平息，水面终将回归静谧。远古的智者知晓，纷争无益，唯有以和为贵，方能让心灵如静水般安宁，这是人际相处最神秘的箴言——少一分争执，多一分静谧。\n\n【当下鼓励】你此刻的纷争，不过是风过水面的涟漪，不必执着于对错，退一步的静谧，会让你遇见更广阔的天地。' },
+            { id:6, name:'师卦', yao:'-- -- -- -- --- --', summary:'地载军旅，律藏温情', story:'暮色中的大地，承载着一支纪律严明的军旅，他们步伐整齐，如同田垄间的麦浪，虽有刚健之气，却藏着守护的温情。德高望重的长者引领着他们，知晓出兵的意义不在于征战，而在于守护安宁。军旅前行的身影，在月光下勾勒出静谧的轮廓，这是责任与担当最神秘的模样。\n\n【当下鼓励】你此刻的担当，如同军旅守护大地般坚定，不必畏惧肩头的重量，每一份坚守，都在守护属于你的静谧与安宁。' },
+            { id:7, name:'比卦', yao:'-- --- -- -- -- --', summary:'水流归地，同心相生', story:'山间的溪流，循着地势缓缓流淌，最终汇聚于厚土之上，它们相互依偎，如同人与人之间的亲近辅助。溪水潺潺，大地静默，二者同心，滋养出漫山遍野的繁花。这是人际相处的神秘韵律——以真诚为引，以正道为基，方能相伴同行。\n\n【当下鼓励】你此刻的陪伴与被陪伴，都是水流归地般的自然缘分，珍惜这份同心的温暖，它会成为你前行路上的静谧力量。' },
+            { id:8, name:'小畜卦', yao:'--- --- -- --- --- ---', summary:'密云不雨，蓄力待发', story:'苍穹之上，密云汇聚，却未即刻降雨，它们在静谧中积蓄力量，等待最合适的时机。春风拂过大地，草木知晓，这是蓄力的时节，不必急于绽放。密云不雨的静谧，是力量积蓄的神秘过程，是"小蓄"而后"大成"的前奏。\n\n【当下鼓励】你此刻的积累，如同密云蓄力般沉稳，不必着急绽放，待力量充盈时，自然会迎来属于你的"甘霖"。' },
+            { id:9, name:'履卦', yao:'--- --- --- -- --- ---', summary:'虎尾轻踏，慎行致远', story:'月光下的山岗，一只猛虎静卧，有人循着星光前行，轻踏过虎尾，却未被惊扰。他知晓，前行之路需心怀敬畏，步步谨慎，方能在险中求安。虎尾轻踏的静谧，是敬畏之心带来的神秘守护，是慎行而后致远的智慧。\n\n【当下鼓励】你此刻的谨慎，不是怯懦，而是对前路的敬畏，心怀敬畏步步前行，每一步都会有静谧的守护相伴。' },
+            { id:10, name:'泰卦', yao:'-- -- -- --- --- ---', summary:'天地交泰，和风送暖', story:'晨曦微露时，天空的阳气缓缓下沉，大地的阴气徐徐上升，天地交融，和风送暖，万物在静谧中蓬勃生长。田垄间的麦穗随风轻摇，溪水潺潺流淌，这是"泰"的境界——阴阳平衡，万物顺遂。天地交泰的静谧，是自然最神秘的馈赠，是顺遂之时的温柔提醒。\n\n【当下鼓励】你此刻的顺遂，是天地交泰般的自然节律，珍惜这份安宁，在顺遂中保持沉稳，方能长久享这份静谧美好。' },
+            { id:11, name:'否卦', yao:'--- --- --- -- -- --', summary:'天地不交，雾锁青山', story:'暮色四合时，天空的阳气上升，大地的阴气下沉，天地隔绝，雾锁青山，万物陷入短暂的沉寂。可青山知晓，雾霭终会散去，天地终将再次交融；草木知晓，沉寂是为了积蓄力量，等待再次蓬勃。这是"否"的神秘韵律——绝境之中，藏着转机。\n\n【当下鼓励】你此刻的沉寂，不过是雾锁青山的短暂时光，不必焦虑，坚守初心静静等待，天地自会交泰，雾散天晴。' },
+            { id:12, name:'同人卦', yao:'--- --- --- --- -- ---', summary:'天火同人，星光共照', story:'夜幕降临时，天空的星火与地上的灯火交相辉映，天火同人，光明普照，不分彼此。旷野中的人们，循着光的指引相聚，没有隔阂，没有偏见，在静谧中达成共识。这是团结的神秘力量——以光明为引，以同心为基，方能共渡难关。\n\n【当下鼓励】你此刻的孤独，只是尚未遇见同行的伙伴，心怀光明静静等候，终会有星光与你共照，温暖前行的路。' },
+            { id:13, name:'大有卦', yao:'--- -- --- --- --- ---', summary:'火天大有，硕果盈枝', story:'秋日的旷野，天空的阳光炽热，大地的果实饱满，火天大有，硕果盈枝。农夫在田间静默收割，脸上带着满足的微笑，却不骄不躁。这是"大有"的神秘境界——收获之时，仍需保持谦逊，方能长久拥有。\n\n【当下鼓励】你此刻的收获，是时光与汗水的馈赠，带着谦逊之心接纳这份美好，静谧前行，会有更多硕果等待你采摘。' },
+            { id:14, name:'谦卦', yao:'-- -- -- --- -- --', summary:'山隐厚土，雾覆青峦', story:'晨雾缭绕的大地，一座高山静静隐藏于厚土之下，不张扬，不显露，却滋养着漫山的草木。雾霭散去时，它依旧保持静谧，接纳阳光的照耀，也包容雨水的冲刷。这是谦逊的神秘力量——藏锋守拙，方能亨通久远。\n\n【当下鼓励】你此刻的谦逊，是山隐厚土般的智慧，不必刻意彰显自己，静谧沉淀中，自会赢得岁月的温柔以待。' },
+            { id:15, name:'豫卦', yao:'-- -- --- -- -- --', summary:'雷出地奋，喜乐安然', story:'春雷初出，从大地深处奋起，震彻寰宇，却不喧嚣。草木在雷声中苏醒，花朵在静谧中绽放，万物都因这生机而喜乐。远古的先民知晓，真正的喜乐，不是狂欢，而是内心的安然，是与自然节律相融的静谧愉悦。\n\n【当下鼓励】你此刻的喜乐，是内心与自然的同频共振，珍惜这份安然，在静谧的愉悦中前行，每一步都充满力量。' },
+            { id:16, name:'随卦', yao:'-- --- --- -- -- ---', summary:'泽中有雷，顺势而行', story:'沼泽之中，雷声隐隐，泽水循着雷声的韵律缓缓流动，顺势而行，不逆势而为。水草在泽水中静静生长，鱼虾在水中安然栖息，这是"随"的智慧——顺应时序，跟随正道，方能安然自在。\n\n【当下鼓励】你此刻的跟随，不是盲从，而是顺势而为的智慧，顺着内心的正道前行，静谧之中，自会遇见美好。' },
+            { id:17, name:'蛊卦', yao:'--- -- -- --- --- --', summary:'山下有风，除旧布新', story:'山风掠过山峦，吹散了陈旧的尘埃，唤醒了沉睡的草木。远古的先民知晓，当旧的秩序衰败时，需以静谧之心除旧布新，如同山风清理尘埃般，温和而坚定。这是变革的神秘力量——在静谧中破旧，在沉稳中立新。\n\n【当下鼓励】你此刻的改变，是除旧布新的开始，不必畏惧未知，以静谧之心坚定前行，新的希望会在变革中滋生。' },
+            { id:18, name:'临卦', yao:'-- -- -- -- --- ---', summary:'泽上有地，浸润无声', story:'沼泽之上，厚土覆盖，泽水浸润大地，无声无息，却滋养出漫山的生机。管理者如同泽水般，以温柔的方式浸润人心，不张扬，不压迫，让人心在静谧中归顺。这是"临"的智慧——以德化人，润物无声。\n\n【当下鼓励】你此刻的影响，如同泽水浸润大地般温柔，不必刻意强求，做好自己，自然会以无声的力量感染他人。' },
+            { id:19, name:'观卦', yao:'--- --- -- -- -- --', summary:'风行地上，静观其变', story:'清风拂过大地，吹动草木，也映照出万物的本貌。远古的智者站在山岗上，静观风过草木的姿态，知晓万物的变化都有规律可循。这是"观"的神秘智慧——以静谧之心观察，方能洞察本质。\n\n【当下鼓励】你此刻的静观，不是停滞，而是为了更好地洞察前路，保持内心的静谧，万物的规律自会呈现在你眼前。' },
+            { id:20, name:'噬嗑卦', yao:'--- -- --- -- -- ---', summary:'雷电合章，明辨是非', story:'雷电交加，雷声震彻，电光照明，如同明辨是非的利剑，划破混沌。远古的先民知晓，当遇到阻碍时，需以严明之心明辨是非，如同雷电合章般，坚定而公正。这是决断的神秘力量——明辨是非，方能破除阻碍。\n\n【当下鼓励】你此刻的决断，是明辨是非后的坚定，不必犹豫，相信自己的判断，静谧前行，阻碍终会被破除。' },
+            { id:21, name:'贲卦', yao:'--- -- -- --- -- ---', summary:'山下有火，文饰有度', story:'山脚下，火光点点，照亮了草木，也为大地增添了一抹文饰。可火光知晓，文饰不可过度，否则会掩盖大地的本真。这是"贲"的智慧——文饰有度，回归本真，方能保持静谧之美。\n\n【当下鼓励】你此刻的修饰，是对美好的追求，但不必过度苛求，回归本真的自己，静谧之中，自会散发独特的光芒。' },
+            { id:22, name:'剥卦', yao:'--- -- -- -- -- --', summary:'山地剥，厚积薄发', story:'山岩之上，土层缓缓剥落，看似衰败，实则在为新的生长积蓄力量。草木在剥落的土层中静静扎根，等待春天的到来。这是"剥"的神秘韵律——衰败之中，藏着新生的希望，厚积方能薄发。\n\n【当下鼓励】你此刻的失落，不过是成长中的"土层剥落"，不必气馁，静静扎根积蓄力量，新生的希望终会破土而出。' },
+            { id:23, name:'复卦', yao:'-- -- -- -- -- ---', summary:'地雷复，万象更新', story:'大地深处，雷声隐隐，唤醒了沉睡的万物，这是"复"的时节——冬去春来，万象更新。嫩芽在土壤中悄悄萌发，带着对新生的渴望，在静谧中生长。这是新生的神秘力量——循环往复，生生不息。\n\n【当下鼓励】你此刻的重启，是万象更新的开始，带着对新生的渴望静静前行，每一步都向着温暖与希望。' },
+            { id:24, name:'无妄卦', yao:'--- --- --- -- -- ---', summary:'天雷无妄，真诚为本', story:'天雷滚滚，震慑寰宇，却不妄为，每一声雷都遵循自然的节律。远古的先民知晓，做人当如天雷般，真诚为本，不妄言，不妄行，方能在静谧中安身立命。这是真诚的神秘力量——心无妄念，方能行稳致远。\n\n【当下鼓励】你此刻的真诚，是最珍贵的品质，保持心无妄念的静谧，真诚前行，岁月自会对你温柔以待。' },
+            { id:25, name:'大畜卦', yao:'--- -- -- --- --- ---', summary:'山天大畜，厚积成德', story:'高山之上，天空广阔，山承载着天空的广阔，也积累着自身的德行。草木在山间繁茂生长，鸟兽在山中安然栖息，这是"大畜"的境界——厚积德行，方能承载万物。\n\n【当下鼓励】你此刻的积累，不仅是能力的提升，更是德行的沉淀，厚积成德，静谧前行，自会拥有承载美好的力量。' },
+            { id:26, name:'颐卦', yao:'--- -- -- -- -- ---', summary:'山雷颐，养正身心', story:'山雷震动，唤醒了万物的生机，也提醒人们要养正身心。远古的先民知晓，养生之道，在于顺应自然；养正之心，在于保持静谧。如同山间的草木，在雷声中生长，在静谧中休养，方能生机盎然。\n\n【当下鼓励】你此刻的休养，不是懈怠，而是养正身心的必要过程，在静谧中滋养自己，身心充盈后，方能更好前行。' },
+            { id:27, name:'大过卦', yao:'-- --- --- --- --- --', summary:'泽风大过，顺势而为', story:'沼泽之上，狂风大作，吹弯了草木，却吹不断它们的根基。草木知晓，顺势弯腰，方能在狂风中保全自身；待风停之后，再挺直腰杆，继续生长。这是"大过"的智慧——身处险境，顺势而为，方能化险为夷。\n\n【当下鼓励】你此刻的困境，如同草木遇狂风，不必硬抗，顺势调整姿态，静谧等待，风停之后，你会更加强韧。' },
+            { id:28, name:'坎卦', yao:'-- --- -- -- --- --', summary:'坎为水，险中求安', story:'深渊之中，流水潺潺，险象环生，却有鱼儿在水中安然游动。它们知晓，深渊虽险，却也藏着生存的智慧——谨慎前行，步步为营，方能在险中求安。这是"坎"的神秘力量——困境之中，藏着生存的勇气与智慧。\n\n【当下鼓励】你此刻的困境，如同深渊流水，不必畏惧，带着勇气谨慎前行，静谧之中，自会找到安身立命的方法。' },
+            { id:29, name:'离卦', yao:'--- -- --- --- -- ---', summary:'离为火，光明普照', story:'夜幕之中，火光熊熊，光明普照，驱散了黑暗，也温暖了人心。火焰静静燃烧，不喧嚣，不张扬，却以自身的光明照亮前路。这是"离"的神秘力量——心怀光明，方能驱散黑暗，温暖前行。\n\n【当下鼓励】你此刻的迷茫，如同夜幕笼罩，不必焦虑，心怀光明静静前行，你的光芒，自会照亮前路的黑暗。' },
+            { id:30, name:'咸卦', yao:'-- --- --- --- -- --', summary:'泽山咸，感应于心', story:'沼泽之畔，山峦静默，泽水与山峦相互感应，滋养出漫山的生机。人与人之间，亦如泽山感应般，心有灵犀，无需言语，便能知晓彼此的心意。这是"咸"的神秘韵律——真诚感应，方能心意相通。\n\n【当下鼓励】你此刻的期待，会被真诚感应，不必刻意言说，保持内心的静谧与真诚，心意相通的人，自会向你走来。' },
+            { id:31, name:'恒卦', yao:'-- -- --- --- --- --', summary:'雷风恒，恒久不变', story:'雷声与风声相伴相生，恒久不变，如同人与人之间的坚守与陪伴。它们在自然中静静回响，不轻易改变，滋养着万物的生长。这是"恒"的智慧——坚守初心，恒久陪伴，方能长久美好。\n\n【当下鼓励】你此刻的坚守，是恒久美好的基石，不必动摇，带着初心静谧前行，那些你珍视的，自会恒久相伴。' },
+            { id:32, name:'遁卦', yao:'--- --- --- --- -- --', summary:'天山遁，避世修身', story:'天空之下，山峦静默，有智者选择遁入山林，避世修身。他知晓，当世事纷扰时，需回归静谧，滋养身心，待时机成熟时，再出山济世。这是"遁"的智慧——避世不是逃避，而是修身养性的静谧时光。\n\n【当下鼓励】你此刻的退缩，不是逃避，而是为了修身养性的静谧时光，安心沉淀自己，待时机成熟，自会光芒再现。' },
+            { id:33, name:'大壮卦', yao:'-- -- --- --- --- ---', summary:'雷天大壮，刚健有度', story:'雷声与天空相伴，刚健有力，却不张扬。草木在雷声中茁壮成长，展现出大壮的生机，却也保持着谦逊的姿态。这是"大壮"的智慧——刚健有度，不逞匹夫之勇，方能长久壮大。\n\n【当下鼓励】你此刻的刚健，是成长的力量，保持适度的谦逊，静谧前行，你的力量会在沉稳中愈发强大。' },
+            { id:34, name:'晋卦', yao:'--- -- --- -- -- --', summary:'火地晋，步步高升', story:'火光从大地上升起，步步高升，照亮了前路，也温暖了人心。草木在火光的照耀下，步步生长，愈发繁茂。这是"晋"的神秘韵律——顺势而为，步步提升，方能亨通顺遂。\n\n【当下鼓励】你此刻的努力，正在铺垫步步高升的道路，不必着急，带着沉稳的心态静谧前行，每一步都在向上生长。' },
+            { id:35, name:'明夷卦', yao:'-- -- -- --- -- ---', summary:'地火明夷，韬光养晦', story:'火光被大地覆盖，看似昏暗无光，实则在地下静静积蓄力量。远古的智者知晓，当光明被遮蔽时，需韬光养晦，如同地下的火光般，不急于显露，待时机成熟时，再重见光明。\n\n【当下鼓励】你此刻的昏暗，是韬光养晦的时光，不必沮丧，在静谧中积蓄力量，终有一天，你会重见光明，光芒更盛。' },
+            { id:36, name:'家人卦', yao:'--- --- -- --- -- ---', summary:'风火家人，家和业兴', story:'清风与火光相伴，温暖了家庭的每一个角落。家人之间，如同清风与火光般，相互温暖，相互陪伴，在静谧中享受家庭的温馨。这是"家人"的智慧——家和方能业兴，温馨方能长久。\n\n【当下鼓励】你此刻的守护，是家庭温馨的基石，珍惜这份静谧的温暖，家和业兴，岁月自会温柔以待。' },
+            { id:37, name:'睽卦', yao:'--- -- --- -- --- ---', summary:'火泽睽，求同存异', story:'火光与泽水看似相悖，却能相互滋养，共同滋养万物。人与人之间，亦如冰火泽睽般，虽有差异，却能求同存异，在静谧中和谐相处。这是"睽"的智慧——尊重差异，求同存异，方能和谐共生。\n\n【当下鼓励】你此刻的差异，不是隔阂的理由，尊重彼此的不同，在静谧中寻找共识，终会和谐相处，相互成就。' },
+            { id:38, name:'蹇卦', yao:'-- --- -- --- -- --', summary:'水山蹇，迎难而上', story:'流水在山峦间穿行，虽遇阻碍，却不退缩，迎难而上，最终冲破阻碍，汇入江河。这是"蹇"的神秘力量——困境之中，迎难而上，方能冲破阻碍，抵达远方。\n\n【当下鼓励】你此刻的阻碍，是成长的试金石，不必畏惧，带着勇气迎难而上，静谧前行，终会冲破阻碍，抵达理想的彼岸。' },
+            { id:39, name:'解卦', yao:'-- -- --- -- --- --', summary:'雷水解，解难脱困', story:'雷声响起，春雨降临，化解了冬日的严寒，也解除了大地的干旱。万物在春雨中苏醒，摆脱了困境，焕发生机。这是"解"的智慧——顺应时序，适时解难，方能脱困重生。\n\n【当下鼓励】你此刻的困境，如同冬日的严寒，不必焦虑，等待时机，适时调整，终会解难脱困，焕发生机。' },
+            { id:40, name:'损卦', yao:'--- -- -- -- --- ---', summary:'山泽损，损有余补不足', story:'山峦为泽水输送养分，泽水为山峦滋养草木，二者损有余补不足，相互滋养，共同生长。这是"损"的智慧——懂得取舍，损有余补不足，方能平衡和谐。\n\n【当下鼓励】你此刻的取舍，不是失去，而是为了更好的平衡，懂得损有余补不足，在静谧中调整自己，终会达到和谐的状态。' },
+            { id:41, name:'益卦', yao:'--- --- -- -- -- ---', summary:'风雷益，相得益彰', story:'清风与雷声相伴，相互助力，相得益彰，滋养着万物的生长。人与人之间，亦如风雷益般，相互帮助，相互成就，在静谧中共同成长。这是"益"的智慧——互帮互助，方能相得益彰。\n\n【当下鼓励】你此刻的付出，会得到相应的回报，乐于帮助他人，在静谧中相互成就，终会实现共赢的美好。' },
+            { id:42, name:'夬卦', yao:'-- --- --- --- --- ---', summary:'泽天夬，果决前行', story:'泽水在天空之下流淌，果决前行，不拖泥带水，最终汇入大海。远古的智者知晓，当机立断，果决前行，方能摆脱困境，抵达远方。这是"夬"的智慧——果决不是鲁莽，而是深思熟虑后的坚定。\n\n【当下鼓励】你此刻的果决，是深思熟虑后的坚定，不必犹豫，带着这份坚定静谧前行，终会抵达理想的彼岸。' },
+            { id:43, name:'姤卦', yao:'--- --- --- --- --- --', summary:'天风姤，相遇是缘', story:'清风在天空中吹拂，遇见了志同道合的伙伴，相伴前行，滋养着万物。人与人之间的相遇，亦如天风姤般，是命中注定的缘分，在静谧中相伴成长。这是"姤"的神秘韵律——相遇是缘，珍惜便好。\n\n【当下鼓励】你此刻的相遇，是时光馈赠的缘分，珍惜这份遇见，在静谧中相伴前行，会收获别样的温暖与成长。' },
+            { id:44, name:'萃卦', yao:'-- --- --- -- -- --', summary:'泽地萃，聚沙成塔', story:'泽水汇聚于大地之上，聚沙成塔，积水成渊，滋养出漫山的生机。人们汇聚在一起，同心协力，在静谧中完成伟大的事业。这是"萃"的智慧——聚沙成塔，同心协力，方能成就大事。\n\n【当下鼓励】你此刻的积累，正在聚沙成塔，不必轻视微小的力量，在静谧中凝聚合力，终会成就属于自己的伟大。' },
+            { id:45, name:'升卦', yao:'-- -- -- --- --- --', summary:'地风升，循序渐进', story:'清风从大地上升起，循序渐进，步步高升，滋养着万物的生长。草木在清风的吹拂下，循序渐进，慢慢生长，愈发繁茂。这是"升"的智慧——循序渐进，不急于求成，方能稳步提升。\n\n【当下鼓励】你此刻的进步，虽缓慢却坚定，不必急于求成，在静谧中循序渐进，终会稳步提升，抵达理想的高度。' },
+            { id:46, name:'困卦', yao:'-- --- --- -- --- --', summary:'泽水困，困境重生', story:'泽水被山峦困住，看似绝境，却在静谧中寻找出路，最终冲破束缚，汇入江河。草木在困境中静静扎根，等待重生的机会。这是"困"的神秘力量——绝境之中，藏着重生的希望。\n\n【当下鼓励】你此刻的困境，不是终点，而是重生的起点，不必绝望，在静谧中寻找出路，终会冲破束缚，重获新生。' },
+            { id:47, name:'井卦', yao:'-- --- -- --- --- --', summary:'水风井，滋养不息', story:'井水在清风的吹拂下，静静流淌，滋养着周边的生灵，不息不休。井水清澈见底，不张扬，不显露，却以自身的滋养温暖着每一个生命。这是"井"的智慧——无私奉献，滋养不息，方能赢得尊重。\n\n【当下鼓励】你此刻的付出，如同井水滋养生灵，不必求回报，在静谧中无私奉献，自会赢得他人的尊重与喜爱。' },
+            { id:48, name:'革卦', yao:'-- --- --- --- -- ---', summary:'泽火革，革新重生', story:'泽水与火光相遇，引发变革，烧毁旧的事物，滋养新的生命。远古的先民知晓，当旧的秩序不再适应时代时，需勇于革新，在变革中重获新生。这是"革"的神秘力量——勇于革新，方能与时俱进。\n\n【当下鼓励】你此刻的革新，是与时俱进的勇气，不必畏惧改变，在静谧中坚定革新，终会重获新生，绽放新的光芒。' },
+            { id:49, name:'鼎卦', yao:'--- -- --- --- --- --', summary:'火风鼎，稳固前行', story:'火光在清风的吹拂下，温暖着鼎器，鼎器稳固如山，滋养着万物。远古的先民知晓，做事当如鼎器般稳固，方能长久前行。这是"鼎"的智慧——稳固根基，方能行稳致远。\n\n【当下鼓励】你此刻的稳固，是前行的根基，不必急于求成，在静谧中筑牢根基，终会行稳致远，成就长久的美好。' },
+            { id:50, name:'震卦', yao:'-- -- --- -- -- ---', summary:'震为雷，敬畏前行', story:'雷声震彻寰宇，警醒着万物，让人们心怀敬畏，谨慎前行。草木在雷声中警醒，更加坚定地扎根生长。这是"震"的智慧——心怀敬畏，方能谨慎前行，不犯错误。\n\n【当下鼓励】你此刻的敬畏，是前行的警醒，保持这份敬畏之心，在静谧中谨慎前行，终会避开错误，行稳致远。' },
+            { id:51, name:'艮卦', yao:'--- -- -- --- -- --', summary:'艮为山，知止不殆', story:'山峦静默矗立，知止不殆，不盲目扩张，却滋养着漫山的草木。远古的智者知晓，做人做事当如山峦般，懂得停止，方能避免危险，长久安宁。这是"艮"的智慧——知止不殆，方能长久安宁。\n\n【当下鼓励】你此刻的停止，不是懈怠，而是知止不殆的智慧，懂得适时停止，在静谧中调整自己，终会避免危险，长久安宁。' },
+            { id:52, name:'渐卦', yao:'--- --- -- --- -- --', summary:'风山渐，循序渐进', story:'清风在山峦间缓缓穿行，循序渐进，不急于求成，滋养着草木的生长。鸟儿在山间缓缓飞翔，循序渐进，搭建起自己的巢穴。这是"渐"的智慧——循序渐进，方能水到渠成。\n\n【当下鼓励】你此刻的缓慢，是循序渐进的铺垫，不必焦虑，在静谧中稳步前行，终会水到渠成，实现目标。' },
+            { id:53, name:'归妹卦', yao:'-- -- --- -- --- ---', summary:'雷泽归妹，顺应天意', story:'雷声与泽水相伴，顺应天意，成就美好的姻缘。人与人之间的结合，亦如雷泽归妹般，顺应天意，在静谧中享受美好的爱情。这是"归妹"的神秘韵律——顺应天意，方能成就美好姻缘。\n\n【当下鼓励】你此刻的等待，是在顺应天意的安排，不必着急，保持内心的静谧与真诚，美好的姻缘终会降临。' },
+            { id:54, name:'丰卦', yao:'-- -- --- --- -- ---', summary:'雷火丰，丰盛有余', story:'雷声与火光相伴，照亮了大地，也带来了丰盛的收获。农夫在田间收割，果实累累，丰盛有余，脸上带着满足的微笑。这是"丰"的境界——努力付出，终会收获丰盛。\n\n【当下鼓励】你此刻的付出，正在孕育丰盛的收获，不必着急，带着期待静谧前行，终会收获属于自己的丰盛与美好。' },
+            { id:55, name:'旅卦', yao:'--- -- --- --- -- --', summary:'火山旅，随遇而安', story:'火山之下，旅人前行，虽四处漂泊，却能随遇而安。他知晓，人生如旅，不必执着于归宿，在漂泊中感受自然的美好，在静谧中寻找内心的安宁。这是"旅"的智慧——随遇而安，方能内心安宁。\n\n【当下鼓励】你此刻的漂泊，不是无依，而是人生的一场旅行，学会随遇而安，在静谧中寻找内心的安宁，每一处风景都是收获。' },
+            { id:56, name:'巽卦', yao:'--- --- -- --- --- --', summary:'巽为风，谦逊顺从', story:'清风拂过大地，谦逊顺从，不张扬，不傲慢，却能滋养万物。草木在清风的吹拂下，谦逊生长，愈发繁茂。这是"巽"的智慧——谦逊顺从，方能赢得人心，滋养万物。\n\n【当下鼓励】你此刻的谦逊，是赢得人心的智慧，不必刻意彰显自己，在静谧中谦逊前行，自会得到他人的喜爱与帮助。' },
+            { id:57, name:'兑卦', yao:'-- --- --- -- --- ---', summary:'兑为泽，愉悦相处', story:'泽水潺潺流淌，滋养着万物，也带来了愉悦的氛围。人们在泽水之畔相聚，欢声笑语，愉悦相处，在静谧中享受美好的时光。这是"兑"的智慧——愉悦相处，方能和谐共生。\n\n【当下鼓励】你此刻的愉悦，是和谐相处的基石，带着这份好心情静谧前行，自会吸引更多美好的人与事向你靠近。' },
+            { id:58, name:'涣卦', yao:'--- --- -- -- --- --', summary:'风水涣，涣散重生', story:'清风与流水相伴，吹散了陈旧的尘埃，也涣散了不好的情绪。人们在清风流水间，忘却烦恼，重获新生，在静谧中找回内心的安宁。这是"涣"的智慧——涣散不好的，方能重获新生。\n\n【当下鼓励】你此刻的烦恼，如同陈旧的尘埃，不必执着，让清风流水般的心境吹散它们，在静谧中重获新生，找回内心的安宁。' },
+            { id:59, name:'节卦', yao:'-- --- -- --- --- ---', summary:'水泽节，节制有度', story:'流水在泽畔流淌，节制有度，不泛滥，不枯竭，滋养着万物。人们知晓，做人做事当如流水般，节制有度，方能长久美好。这是"节"的智慧——节制有度，方能长久安宁。\n\n【当下鼓励】你此刻的节制，是长久美好的基石，不必放纵自己，在静谧中保持适度的节制，终会收获长久的安宁与美好。' },
+            { id:60, name:'中孚卦', yao:'--- --- -- -- --- ---', summary:'风泽中孚，诚信为本', story:'清风与泽水相伴，诚信为本，滋养着万物的生长。人与人之间，亦如风泽中孚般，以诚信相待，在静谧中建立起深厚的信任。这是"中孚"的智慧——诚信为本，方能赢得信任。\n\n【当下鼓励】你此刻的诚信，是最珍贵的品质，保持这份诚信，在静谧中真诚前行，自会赢得他人的信任与尊重。' },
+            { id:61, name:'小过卦', yao:'-- -- --- --- -- --', summary:'雷山小过，小事可为', story:'雷声在山峦间回响，虽不震彻寰宇，却能警醒万物。人们知晓，小事可为，大事不可妄为，在小事中积累力量，在静谧中稳步前行。这是"小过"的智慧——脚踏实地，小事积累，方能成就大事。\n\n【当下鼓励】你此刻的小事，不是微不足道，而是积累力量的基石，脚踏实地做好每一件小事，在静谧中稳步前行，终会成就大事。' },
+            { id:62, name:'既济卦', yao:'-- --- -- --- -- ---', summary:'水火既济，圆满和谐', story:'水火交融，既济圆满，滋养着万物的生长。天地之间，圆满和谐，静谧安宁，这是"既济"的境界——阴阳平衡，圆满和谐，方能长久美好。\n\n【当下鼓励】你此刻的圆满，是阴阳平衡的结果，珍惜这份美好，在静谧中保持平衡，终会长久享受这份圆满与和谐。' },
+            { id:63, name:'未济卦', yao:'--- -- --- -- --- --', summary:'火水未济，未来可期', story:'火水尚未交融，看似未圆满，却藏着无限的可能。万物在静谧中等待，积蓄力量，期待着水火交融的圆满时刻。这是"未济"的神秘韵律——未圆满不是遗憾，而是未来可期的希望。\n\n【当下鼓励】你此刻的未圆满，不是遗憾，而是未来可期的铺垫，带着希望静谧前行，终会迎来属于自己的圆满时刻。' }
+        ];
+
+        // 爻辞数据（与文档完全对应）
+        const yaoTexts = [
+            [ // 0 乾卦
+                "初九：潜龙，勿用。------龙潜藏水底，不宜行动。",
+                "九二：见龙在田，利见大人。------龙出现在田间，利于拜见有德位之人。",
+                "九三：君子终日乾乾，夕惕若厉，无咎。------白天勤奋努力，夜晚警惕反省，无灾祸。",
+                "九四：或跃在渊，无咎。------或跃起或退守深渊，审时度势无灾祸。",
+                "九五：飞龙在天，利见大人。------龙高飞在天，大展宏图，利于见大人。",
+                "上九：亢龙，有悔。------龙飞得过高，物极必反，有悔恨。"
+            ],
+            [ // 1 坤卦
+                "初六：履霜，坚冰至。------踩到薄霜，可知坚冰将至，防微杜渐。",
+                "六二：直方大，不习无不利。------正直、端方、广大，顺其自然无不利。",
+                "六三：含章可贞，或从王事，无成有终。------内含才华，谨慎守正，辅佐君王，不居功但善终。",
+                "六四：括囊，无咎无誉。------像扎紧口袋，谨言慎行，无过错也无荣誉。",
+                "六五：黄裳，元吉。------穿黄色下裳，中庸守礼，大吉。",
+                "上六：龙战于野，其血玄黄。------阴气极盛与阳气相争，两败俱伤。"
+            ],
+            [ // 2 屯卦
+                "初九：磐桓，利居贞，利建侯。------徘徊不前，宜守正，利于建立基业。",
+                "六二：屯如邅如，乘马班如，匪寇婚媾；女子贞不字，十年乃字。------艰难徘徊，不是盗寇是求婚；女子守贞不嫁，十年才嫁。",
+                "六三：即鹿无虞，惟入于林中；君子几，不如舍，往吝。------追鹿无向导，入密林；君子见机，不如放弃，前往有难。",
+                "六四：乘马班如，求婚媾，往吉，无不利。------骑马徘徊求婚配，前往吉祥。",
+                "九五：屯其膏，小贞吉，大贞凶。------囤积财富，小事守正吉，大事守正凶。",
+                "上六：乘马班如，泣血涟如。------骑马来回徘徊，悲伤流泪。"
+            ],
+            [ // 3 蒙卦
+                "初六：发蒙，利用刑人，用说桎梏；以往吝。------启发蒙昧，可用规矩约束，不可放纵。",
+                "九二：包蒙，吉；纳妇，吉；子克家。------包容蒙昧者，吉祥；娶妇吉，子能持家。",
+                "六三：勿用取女，见金夫，不有躬，无攸利。------不要娶此女，见利忘身，无好处。",
+                "六四：困蒙，吝。------困于蒙昧无知，有困难。",
+                "六五：童蒙，吉。------像孩童一样天真求教，吉祥。",
+                "上九：击蒙，不利为寇，利御寇。------严厉管教蒙昧，不宜施暴，利于防御。"
+            ],
+            [ // 4 需卦
+                "初九：需于郊，利用恒，无咎。------在郊外等待，保持恒心，无灾祸。",
+                "九二：需于沙，小有言，终吉。------在沙地等待，略有口舌，最终吉祥。",
+                "九三：需于泥，致寇至。------在泥沼等待，易招盗寇。",
+                "六四：需于血，出自穴。------在险地等待，能脱离险境。",
+                "九五：需于酒食，贞吉。------在宴饮中等待，守正吉祥。",
+                "上六：入于穴，有不速之客三人来，敬之终吉。------落入洞穴，有不请之客来，恭敬对待终吉。"
+            ],
+            [ // 5 讼卦
+                "初六：不永所事，小有言，终吉。------不纠缠争讼，略有口舌，终吉。",
+                "九二：不克讼，归而逋，其邑人三百户，无眚。------争讼不胜，退避退守，无灾祸。",
+                "六三：食旧德，贞厉，终吉；或从王事，无成。------安守旧德，虽危终吉；辅佐君王，不居功。",
+                "九四：不克讼，复即命，渝，安贞吉。------争讼不胜，回归正理，改变态度，守正吉祥。",
+                "九五：讼，元吉。------公正断讼，大吉。",
+                "上九：或锡之鞶带，终朝三褫之。------虽得赏赐，一天内多次被剥夺。"
+            ],
+            [ // 6 师卦
+                "初六：师出以律，否臧凶。------出兵要有纪律，军纪不好则凶。",
+                "九二：在师中，吉，无咎；王三锡命。------统帅军中，吉祥；君王多次嘉奖。",
+                "六三：师或舆尸，凶。------军队载尸而归，凶险。",
+                "六四：师左次，无咎。------军队撤退驻扎，无灾祸。",
+                "六五：田有禽，利执言，无咎；长子帅师，弟子舆尸，贞凶。------狩猎有获，利于征讨；长子领兵吉，次子领兵凶。",
+                "上六：大君有命，开国承家，小人勿用。------君王论功行赏，分封诸侯，不可用小人。"
+            ],
+            [ // 7 比卦
+                "初六：有孚比之，无咎；有孚盈缶，终来有它，吉。------心怀诚信相亲，无灾祸；诚信充盈，终有吉祥。",
+                "六二：比之自内，贞吉。------从内部亲辅，守正吉祥。",
+                "六三：比之匪人。------亲近不该亲近的人。",
+                "六四：外比之，贞吉。------向外亲辅贤明，守正吉祥。",
+                "九五：显比，王用三驱，失前禽；邑人不诫，吉。------光明正大亲比，田猎网开一面，百姓安宁。",
+                "上六：比之无首，凶。------亲比无首领，凶险。"
+            ],
+            [ // 8 小畜卦
+                "初九：复自道，何其咎，吉。------回归正途，无灾祸，吉祥。",
+                "九二：牵复，吉。------被牵引回归正道，吉祥。",
+                "九三：舆说辐，夫妻反目。------车辐脱落，夫妻不和。",
+                "六四：有孚，血去惕出，无咎。------心怀诚信，远离忧患，无灾祸。",
+                "九五：有孚挛如，富以其邻。------诚信相连，与邻居共同富裕。",
+                "上九：既雨既处，尚德载；妇贞厉，月几望，君子征凶。------阴阳调和但过盛；妇人守正有危，君子出征凶。"
+            ],
+            [ // 9 履卦
+                "初九：素履，往无咎。------朴素行事，前往无灾祸。",
+                "九二：履道坦坦，幽人贞吉。------走平坦大道，隐士守正吉祥。",
+                "六三：眇能视，跛能履，履虎尾，咥人，凶；武人为于大君。------眼瘸偏看，脚跛硬走，踩虎尾被咬，凶险；武夫妄想当君王。",
+                "九四：履虎尾，愬愬，终吉。------踩虎尾，恐惧警惕，终吉。",
+                "九五：夬履，贞厉。------果决行事，守正有危。",
+                "上九：视履考祥，其旋元吉。------回顾行为，考察吉凶，回头大吉。"
+            ],
+            [ // 10 泰卦
+                "初九：拔茅茹，以其汇，征吉。------拔茅草连根而起，同类相聚，出征吉。",
+                "九二：包荒，用冯河，不遐遗；朋亡，得尚于中行。------包容广阔，涉河果敢，不遗远人；不结党，行中道受尊崇。",
+                "九三：无平不陂，无往不复；艰贞无咎；勿恤其孚，于食有福。------平会变坡，去会回来；艰难守正无灾；诚信自有福。",
+                "六四：翩翩，不富以其邻；不戒以孚。------轻盈相处，不靠邻致富；以诚信相待。",
+                "六五：帝乙归妹，以祉元吉。------帝王嫁女，得福大吉。",
+                "上六：城复于隍，勿用师；自邑告命，贞吝。------城墙倒塌，不可用兵；自我反省，守正有难。"
+            ],
+            [ // 11 否卦
+                "初六：拔茅茹，以其汇，贞吉，亨。------拔茅连根，守正吉祥亨通。",
+                "六二：包承，小人吉，大人否，亨。------包容顺承，小人吉，君子闭塞但终亨。",
+                "六三：包羞。------包容羞辱，忍辱负重。",
+                "九四：有命，无咎，畴离祉。------奉天命行事，无灾祸，众人得福。",
+                "九五：休否，大人吉；其亡其亡，系于苞桑。------停止闭塞，君子吉；时刻警惕，根基稳固。",
+                "上九：倾否，先否后喜。------倾覆闭塞，先苦后甜。"
+            ],
+            [ // 12 同人卦
+                "初九：同人于门，无咎。------在门口与人同心，无灾祸。",
+                "六二：同人于宗，吝。------只在宗族内同心，偏狭有难。",
+                "九三：伏戎于莽，升其高陵，三岁不兴。------埋伏军队，长期不能取胜。",
+                "九四：乘其墉，弗克攻，吉。------登上城墙，不强行进攻，吉祥。",
+                "九五：同人，先号咷而后笑；大师克相遇。------与人同心，先哭后笑；大军胜利会师。",
+                "上九：同人于郊，无悔。------在郊外与人同心，无悔恨。"
+            ],
+            [ // 13 大有卦
+                "初九：无交害，匪咎，艰则无咎。------不互相侵害，无灾祸；艰难守正无灾。",
+                "九二：大车以载，有攸往，无咎。------大车满载，前往无灾祸。",
+                "九三：公用亨于天子，小人弗克。------王公朝见天子，小人不能胜任。",
+                "九四：匪其彭，无咎。------不盛气凌人，无灾祸。",
+                "六五：厥孚交如，威如，吉。------以诚信相交，威严吉祥。",
+                "上九：自天佑之，吉无不利。------上天保佑，吉祥无不利。"
+            ],
+            [ // 14 谦卦
+                "初六：谦谦君子，用涉大川，吉。------谦而又谦的君子，渡大河吉。",
+                "六二：鸣谦，贞吉。------名声谦虚，守正吉祥。",
+                "九三：劳谦，君子有终，吉。------勤劳谦虚，君子善终吉。",
+                "六四：无不利，撝谦。------发挥谦虚，无不利。",
+                "六五：不富以其邻，利用侵伐，无不利。------不靠邻致富，利于征讨无不利。",
+                "上六：鸣谦，利用行师，征邑国。------名声谦虚，利于出兵征战。"
+            ],
+            [ // 15 豫卦
+                "初六：鸣豫，凶。------得意享乐，凶险。",
+                "六二：介于石，不终日，贞吉。------坚贞如石，不终日享乐，守正吉。",
+                "六三：盱豫，悔，迟有悔。------媚上享乐，有悔，不改更悔。",
+                "九四：由豫，大有得；勿疑，朋盍簪。------因喜悦得大收获；勿疑，朋友相聚。",
+                "六五：贞疾，恒不死。------守正防患，长久不衰。",
+                "上六：冥豫，成有渝，无咎。------沉迷享乐，及时改变，无灾祸。"
+            ],
+            [ // 16 随卦
+                "初九：官有渝，贞吉；出门交有功。------正道有变，守正吉；出门交往有功。",
+                "六二：系小子，失丈夫。------依附小人，失去君子。",
+                "六三：系丈夫，失小子；随有求得，利居贞。------依附君子，远离小人；所求可得，守正吉。",
+                "九四：随有获，贞凶；有孚在道，以明，何咎。------随从有获，守正防凶；心存诚信，明哲无灾。",
+                "九五：孚于嘉，吉。------诚信善美，吉祥。",
+                "上六：拘系之，乃从维之；王用亨于西山。------被拘禁仍顺从；君王祭祀西山。"
+            ],
+            [ // 17 蛊卦
+                "初六：干父之蛊，有子，考无咎，厉，终吉。------纠正父辈过失，有孝子，虽危终吉。",
+                "九二：干母之蛊，不可贞。------纠正母辈过失，不可太刚直。",
+                "九三：干父之蛊，小有悔，无大咎。------纠正父过，略有悔，无大灾。",
+                "六四：裕父之蛊，往见吝。------宽容父过，前往有难。",
+                "六五：干父之蛊，用誉。------纠正父过，获得荣誉。",
+                "上九：不事王侯，高尚其事。------不侍奉王侯，品格高尚。"
+            ],
+            [ // 18 临卦
+                "初九：咸临，贞吉。------感化亲临，守正吉祥。",
+                "九二：咸临，吉，无不利。------以德亲临，吉祥无不利。",
+                "六三：甘临，无攸利；既忧之，无咎。------靠甜言亲临，无利；知忧改之，无灾。",
+                "六四：至临，无咎。------亲自亲临，无灾祸。",
+                "六五：知临，大君之宜，吉。------以智慧亲临，适合君主，吉。",
+                "上六：敦临，吉，无咎。------敦厚亲临，吉祥无灾。"
+            ],
+            [ // 19 观卦
+                "初六：童观，小人无咎，君子吝。------幼稚观察，小人无灾，君子有难。",
+                "六二：窥观，利女贞。------从门缝偷看，利于女子守正。",
+                "六三：观我生，进退。------观察自我，决定进退。",
+                "六四：观国之光，利用宾于王。------观国家风光，利于辅佐君王。",
+                "九五：观我生，君子无咎。------反观自我，君子无灾祸。",
+                "上九：观其生，君子无咎。------观察他人，君子无灾祸。"
+            ],
+            [ // 20 噬嗑卦
+                "初九：屦校灭趾，无咎。------脚戴刑具伤脚趾，小惩无灾。",
+                "六二：噬肤灭鼻，无咎。------咬柔肉伤鼻子，执法适中无灾。",
+                "六三：噬腊肉，遇毒；小吝，无咎。------咬干肉遇毒，小有困难无灾。",
+                "九四：噬干胏，得金矢；利艰贞，吉。------咬带骨干肉，得金箭；艰难守正吉。",
+                "六五：噬干肉，得黄金；贞厉，无咎。------咬干肉得黄金；守正防危无灾。",
+                "上九：何校灭耳，凶。------肩扛刑具伤耳朵，凶险。"
+            ],
+            [ // 21 贲卦
+                "初九：贲其趾，舍车而徒。------装饰脚趾，弃车步行。",
+                "六二：贲其须。------装饰胡须，修饰外表。",
+                "九三：贲如濡如，永贞吉。------装饰润泽，长久守正吉。",
+                "六四：贲如皤如，白马翰如；匪寇，婚媾。------装饰素净，白马潇洒；不是盗寇，是求婚。",
+                "六五：贲于丘园，束帛戋戋；吝，终吉。------装饰丘园，礼物微薄；先难后吉。",
+                "上九：白贲，无咎。------素白装饰，返璞归真无灾。"
+            ],
+            [ // 22 剥卦
+                "初六：剥床以足，蔑贞凶。------床从脚开始剥落，不守正凶。",
+                "六二：剥床以辨，蔑贞凶。------床从床边剥落，不守正凶。",
+                "六三：剥之，无咎。------虽被剥落，无灾祸。",
+                "六四：剥床以肤，凶。------床剥落伤及人身，凶险。",
+                "六五：贯鱼，以宫人宠，无不利。------像鱼贯排列，宫人受宠，无不利。",
+                "上九：硕果不食，君子得舆，小人剥庐。------硕果留存，君子得车，小人毁屋。"
+            ],
+            [ // 23 复卦
+                "初九：不远复，无祇悔，元吉。------没走远就返回，无大悔，大吉。",
+                "六二：休复，吉。------美好回归，吉祥。",
+                "六三：频复，厉，无咎。------频繁反复，有危险但无灾。",
+                "六四：中行独复。------走中道独自回归。",
+                "六五：敦复，无悔。------敦厚回归，无悔恨。",
+                "上六：迷复，凶，有灾眚；用行师，终有大败；以其国君，凶；至于十年，不克征。------迷失回归路，凶有灾；出兵大败；国君凶；十年不能征战。"
+            ],
+            [ // 24 无妄卦
+                "初九：无妄，往吉。------不妄为，前往吉祥。",
+                "六二：不耕获，不菑畬，则利有攸往。------不耕而获，不垦而熟，利于前往。",
+                "六三：无妄之灾，或系之牛，行人之得，邑人之灾。------意外之灾，牛被牵走，路人得之，乡人受灾。",
+                "九四：可贞，无咎。------可以守正，无灾祸。",
+                "九五：无妄之疾，勿药有喜。------意外小病，不用药自愈。",
+                "上九：无妄，行有眚，无攸利。------不妄为，但行动有灾，无利。"
+            ],
+            [ // 25 大畜卦
+                "初九：有厉，利已。------有危险，利于停止。",
+                "九二：舆说辐。------车辐脱落，不宜前行。",
+                "九三：良马逐，利艰贞；日闲舆卫，利有攸往。------良马追逐，艰难守正吉；每日操练，利于前往。",
+                "六四：童牛之牿，元吉。------小牛戴枷，防患未然，大吉。",
+                "六五：豮豕之牙，吉。------驯服公猪，吉。",
+                "上九：何天之衢，亨。------像通天大道，亨通。"
+            ],
+            [ // 26 颐卦
+                "初九：舍尔灵龟，观我朵颐，凶。------放弃灵龟，看别人吃饭，凶险。",
+                "六二：颠颐，拂经，于丘颐，征凶。------反向求养，违背常理，求养于高丘，出征凶。",
+                "六三：拂颐，贞凶，十年勿用，无攸利。------违背养生之道，守正凶，十年不可用。",
+                "六四：颠颐，吉；虎视眈眈，其欲逐逐，无咎。------反向求养，吉；如虎紧盯，无灾祸。",
+                "六五：拂经，居贞吉，不可涉大川。------违背常理，居守吉，不可渡大河。",
+                "上九：由颐，厉，吉，利涉大川。------顺理养生，虽危吉，利于渡大河。"
+            ],
+            [ // 27 大过卦
+                "初六：藉用白茅，无咎。------用白茅垫物，恭敬无灾。",
+                "九二：枯杨生稊，老夫得其女妻，无不利。------枯杨发芽，老人娶少女，无不利。",
+                "九三：栋桡，凶。------栋梁弯曲，凶险。",
+                "九四：栋隆，吉；有它，吝。------栋梁隆起，吉；有变故则难。",
+                "九五：枯杨生华，老妇得其士夫，无咎无誉。------枯杨开花，老妇嫁少男，无灾无誉。",
+                "上六：过涉灭顶，凶，无咎。------渡河过头淹顶，凶，但无过错。"
+            ],
+            [ // 28 坎卦
+                "初六：习坎，入于坎窞，凶。------重重险难，落入深坑，凶。",
+                "九二：坎有险，求小得。------险中有难，求小收获。",
+                "六三：来之坎坎，险且枕，入于坎窞，勿用。------处处险难，落入深坑，不可行动。",
+                "六四：樽酒，簋贰，用缶，纳约自牖，终无咎。------简单酒食，诚信相待，终无灾。",
+                "九五：坎不盈，祗既平，无咎。------坑不盈满，即将填平，无灾。",
+                "上六：系用徽纆，置于丛棘，三岁不得，凶。------被绳索捆绑，关在荆棘中，三年不得脱，凶。"
+            ],
+            [ // 29 离卦
+                "初九：履错然，敬之，无咎。------行动错乱，保持恭敬，无灾。",
+                "六二：黄离，元吉。------黄色附丽，中道大吉。",
+                "九三：日昃之离，不鼓缶而歌，则大耋之嗟，凶。------太阳西斜，不及时行乐，将老年叹息，凶。",
+                "九四：突如其来如，焚如，死如，弃如。------突然而来，焚烧、死亡、抛弃。",
+                "六五：出涕沱若，戚嗟若，吉。------泪流满面，忧伤叹息，吉祥。",
+                "上九：王用出征，有嘉折首，获匪其丑，无咎。------君王出征，斩敌首，俘获异类，无灾。"
+            ],
+            [ // 30 咸卦
+                "初六：咸其拇。------感应在脚趾，初心微动。",
+                "六二：咸其腓，凶；居吉。------感应在小腿，躁动则凶，安居则吉。",
+                "九三：咸其股，执其随，往吝。------感应在大腿，盲目追随，前往有难。",
+                "九四：贞吉，悔亡；憧憧往来，朋从尔思。------守正吉祥，悔恨消失；心意相通，朋友顺从。",
+                "九五：咸其脢，无悔。------感应在脊背，心意坚定，无悔。",
+                "上六：咸其辅、颊、舌。------感应在口舌言语，重在沟通。"
+            ],
+            [ // 31 恒卦
+                "初六：浚恒，贞凶，无攸利。------追求过深过久，守正也凶，无利。",
+                "九二：悔亡。------悔恨消失。",
+                "九三：不恒其德，或承之羞，贞吝。------不能恒久守德，会蒙受羞辱，有难。",
+                "九四：田无禽。------田猎无获，努力无成果。",
+                "六五：恒其德，贞；妇人吉，夫子凶。------恒久守德，女子吉，男子刚柔不当则凶。",
+                "上六：振恒，凶。------动摇恒心，凶险。"
+            ],
+            [ // 32 遁卦
+                "初六：遁尾，厉，勿用有攸往。------退避在后，危险，不宜前往。",
+                "六二：执之用黄牛之革，莫之胜说。------用黄牛皮束缚，坚定不可解脱。",
+                "九三：系遁，有疾厉；畜臣妾，吉。------被牵绊而退，有危难；养家人吉。",
+                "九四：好遁，君子吉，小人否。------喜爱退避，君子吉，小人做不到。",
+                "九五：嘉遁，贞吉。------赞美退避，守正吉祥。",
+                "上九：肥遁，无不利。------宽裕从容退避，无不利。"
+            ],
+            [ // 33 大壮卦
+                "初九：壮于趾，征凶，有孚。------刚壮在脚趾，冒进凶，心怀诚信。",
+                "九二：贞吉。------守正吉祥。",
+                "九三：小人用壮，君子用罔，贞厉；羝羊触藩，羸其角。------小人恃强，君子不用；公羊撞篱，角被缠住。",
+                "九四：贞吉，悔亡；藩决不羸，壮于大舆之輹。------守正吉，悔亡；冲破阻碍，刚壮稳固。",
+                "六五：丧羊于易，无悔。------在田场丢失羊，无悔。",
+                "上六：羝羊触藩，不能退，不能遂，无攸利；艰则吉。------公羊撞篱，进退两难；艰难守正吉。"
+            ],
+            [ // 34 晋卦
+                "初六：晋如，摧如，贞吉；罔孚，裕无咎。------前进受抑，守正吉；不被信任，从容无灾。",
+                "六二：晋如，愁如，贞吉；受兹介福，于其王母。------前进忧愁，守正吉；得大福于祖母。",
+                "六三：众允，悔亡。------得到众人信任，悔恨消失。",
+                "九四：晋如鼫鼠，贞厉。------像鼫鼠一样前进，贪而无能，守正有危。",
+                "六五：悔亡，失得勿恤；往吉，无不利。------悔亡，不计得失；前往吉，无不利。",
+                "上九：晋其角，维用伐邑，厉吉，无咎；贞吝。------进上角顶，宜于征伐，虽危吉；守正有难。"
+            ],
+            [ // 35 明夷卦
+                "初九：明夷于飞，垂其翼；君子于行，三日不食；有攸往，主人有言。------光明受伤飞翔，垂落翅膀；君子远行，忍饥挨饿；前往会被责难。",
+                "六二：明夷，夷于左股，用拯马壮，吉。------光明受伤，伤于左股，用壮马拯救吉。",
+                "九三：明夷于南狩，得其大首；不可疾，贞。------光明受伤，往南征伐，擒获首领；不可急躁，守正。",
+                "六四：入于左腹，获明夷之心，于出门庭。------进入左腹，获知光明受伤的心意，走出家门。",
+                "六五：箕子之明夷，利贞。------像箕子一样韬光养晦，利于守正。",
+                "上六：不明，晦；初登于天，后入于地。------光明消失，转为黑暗；开始升天，后来入地。"
+            ],
+            [ // 36 家人卦
+                "初九：闲有家，悔亡。------在家防患未然，悔恨消失。",
+                "六二：无攸遂，在中馈，贞吉。------不擅自做主，主持家务，守正吉。",
+                "九三：家人嗃嗃，悔厉，吉；妇子嘻嘻，终吝。------家人严厉，虽危吉；妇子嬉乐，终有难。",
+                "六四：富家，大吉。------使家庭富裕，大吉。",
+                "九五：王假有家，勿恤，吉。------君王感化家庭，不用忧虑，吉。",
+                "上九：有孚威如，终吉。------有诚信又威严，终吉。"
+            ],
+            [ // 37 睽卦
+                "初九：悔亡；丧马，勿逐自复；见恶人，无咎。------悔亡；马丢失，不用追自回；见恶人，无灾。",
+                "九二：遇主于巷，无咎。------在小巷遇见主人，无灾。",
+                "六三：见舆曳，其牛掣，其人天且劓；无初有终。------车被拉、牛被扯，人受刑罚；开始不好，结果好。",
+                "九四：睽孤，遇元夫，交孚，厉无咎。------背离孤独，遇君子，相交诚信，虽危无灾。",
+                "六五：悔亡，厥宗噬肤，往何咎。------悔亡，同宗亲近和睦，前往何灾之有。",
+                "上九：睽孤，见豕负涂，载鬼一车；先张之弧，后说之弧；匪寇，婚媾；往遇雨则吉。------背离多疑，看清真相；不是盗寇，是求婚；遇雨则吉。"
+            ],
+            [ // 38 蹇卦
+                "初六：往蹇，来誉。------前往困难，归来得荣誉。",
+                "六二：王臣蹇蹇，匪躬之故。------君王臣子艰难奔走，不是为自身。",
+                "九三：往蹇，来反。------前往困难，归来返回。",
+                "六四：往蹇，来连。------前往困难，归来牵连相助。",
+                "九五：大蹇，朋来。------非常艰难，朋友来助。",
+                "上六：往蹇，来硕；吉，利见大人。------前往困难，归来大有收获；吉，利于见大人。"
+            ],
+            [ // 39 解卦
+                "初六：无咎。------无灾祸。",
+                "九二：田获三狐，得黄矢，贞吉。------田猎获多狐，得金箭，守正吉。",
+                "六三：负且乘，致寇至，贞吝。------背负东西又乘车，招引盗寇，守正有难。",
+                "九四：解而拇，朋至斯孚。------解开脚趾束缚，朋友到来诚信相交。",
+                "六五：君子维有解，吉；有孚于小人。------君子解除束缚，吉；用诚信感化小人。",
+                "上六：公用射隼于高墉之上，获之，无不利。------王公射高墙上的鹰隼，捕获，无不利。"
+            ],
+            [ // 40 损卦
+                "初九：已事遄往，无咎；酌损之。------停止事务速往，无灾；酌情减损。",
+                "九二：利贞，征凶；弗损，益之。------守正吉，出征凶；不减损，反增益。",
+                "六三：三人行，则损一人；一人行，则得其友。------三人同行，损一人；一人独行，得朋友。",
+                "六四：损其疾，使遄有喜，无咎。------减损疾病，迅速有喜，无灾。",
+                "六五：或益之，十朋之龟，弗克违，元吉。------有人赠送大宝龟，不能推辞，大吉。",
+                "上九：弗损，益之，无咎，贞吉；利有攸往，得臣无家。------不减损，反增益，无灾，守正吉；利于前往，得无家之臣。"
+            ],
+            [ // 41 益卦
+                "初九：利用为大作，元吉，无咎。------利于大有作为，大吉，无灾。",
+                "六二：或益之，十朋之龟，弗克违，永贞吉；王用享于帝，吉。------得大宝龟，不能推辞，永守正吉；君王祭天吉。",
+                "六三：益之用凶事，无咎；有孚中行，告公用圭。------增益用于救凶平险，无灾；诚信中道，执圭禀告王公。",
+                "六四：中行，告公从；利用为依迁国。------中道行事，王公听从；利于依附迁都。",
+                "九五：有孚惠心，勿问元吉；有孚惠我德。------有诚信仁惠心，不问自大吉；人以诚信感我德。",
+                "上九：莫益之，或击之；立心勿恒，凶。------无人增益，有人攻击；用心不恒，凶险。"
+            ],
+            [ // 42 夬卦
+                "初九：壮于前趾，往不胜，为咎。------刚壮在前趾，前往不胜，有灾。",
+                "九二：惕号，莫夜有戎，勿恤。------警惕呼号，夜晚有兵，不用忧虑。",
+                "九三：壮于頄，有凶；君子夬夬，独行遇雨，若濡有愠，无咎。------刚壮在面颊，凶；君子决断，独行遇雨，被淋湿有怨，无灾。",
+                "九四：臀无肤，其行次且；牵羊悔亡，闻言不信。------臀部受伤，行走困难；牵羊悔亡，听言不信。",
+                "九五：苋陆夬夬，中行无咎。------像斩草一样果断，中道行事无灾。",
+                "上六：无号，终有凶。------不必呼号，终究凶险。"
+            ],
+            [ // 43 姤卦
+                "初六：系于金柅，贞吉；有攸往，见凶，羸豕孚蹢躅。------系于金属刹车，守正吉；前往凶，猪躁动不安。",
+                "九二：包有鱼，无咎，不利宾。------厨房里有鱼，无灾，不宜待客。",
+                "九三：臀无肤，其行次且，厉，无大咎。------臀部受伤，行走困难，有危，无大灾。",
+                "九四：包无鱼，起凶。------厨房无鱼，兴起凶险。",
+                "九五：以杞包瓜，含章，有陨自天。------用杞叶包瓜，内含文采，有天命降临。",
+                "上九：姤其角，吝，无咎。------相遇在角端，有难，无灾。"
+            ],
+            [ // 44 萃卦
+                "初六：有孚不终，乃乱乃萃；若号，一握为笑；勿恤，往无咎。------有诚信不能善终，混乱相聚；号哭变欢笑；勿忧，前往无灾。",
+                "六二：引吉，无咎；孚乃利用禴。------牵引吉祥，无灾；诚信利于薄祭。",
+                "六三：萃如，嗟如，无攸利；往无咎，小吝。------相聚叹息，无利；前往无灾，小有难。",
+                "九四：大吉，无咎。------大吉，无灾祸。",
+                "九五：萃有位，无咎；匪孚，元永贞，悔亡。------相聚在位，无灾；虽未全信，长久守正，悔亡。",
+                "上六：赍咨涕洟，无咎。------叹息流泪，无灾祸。"
+            ],
+            [ // 45 升卦
+                "初六：允升，大吉。------诚信上升，大吉。",
+                "九二：孚乃利用禴，无咎。------诚信利于薄祭，无灾。",
+                "九三：升虚邑。------上升进入空邑，顺利无阻。",
+                "六四：王用亨于岐山，吉，无咎。------君王在岐山祭祀，吉，无灾。",
+                "六五：贞吉，升阶。------守正吉，登阶上升。",
+                "上六：冥升，利于不息之贞。------昏昧上升，利于不停息守正。"
+            ],
+            [ // 46 困卦
+                "初六：臀困于株木，入于幽谷，三岁不觌。------臀部被困在木桩，进入幽谷，三年不见人。",
+                "九二：困于酒食，朱绂方来，利用享祀；征凶，无咎。------被酒食困，荣禄到来，利于祭祀；出征凶，无灾。",
+                "六三：困于石，据于蒺藜；入于其宫，不见其妻，凶。------困在石头下，处在蒺藜中；回家不见妻子，凶。",
+                "九四：来徐徐，困于金车，吝，有终。------缓缓而来，被困在金车，有难，有好结果。",
+                "九五：劓刖，困于赤绂；乃徐有说，利用祭祀。------受刑不安，被荣禄困；慢慢解脱，利于祭祀。",
+                "上六：困于葛藟，于臲卼；曰动悔，有悔；征吉。------被困藤蔓，动摇不安；动有悔，知悔则吉；出征吉。"
+            ],
+            [ // 47 井卦
+                "初六：井泥不食，旧井无禽。------井有淤泥不能食用，旧井无鸟来。",
+                "九二：井谷射鲋，瓮敝漏。------在井底射小鱼，水瓶破漏。",
+                "九三：井渫不食，为我心恻；可用汲，王明，并受其福。------井已清理不饮用，令人痛心；可以汲水，君王英明，众人受福。",
+                "六四：井甃，无咎。------井壁修治，无灾祸。",
+                "九五：井洌，寒泉食。------井水清冽，寒泉可食用。",
+                "上六：井收勿幕，有孚元吉。------井完工不加盖，有诚信大吉。"
+            ],
+            [ // 48 革卦
+                "初九：巩用黄牛之革。------用黄牛皮革束缚，固守不宜变。",
+                "六二：己日乃革之，征吉，无咎。------到己日再变革，出征吉，无灾。",
+                "九三：征凶，贞厉；革言三就，有孚。------出征凶，守正危；变革多次成熟，有诚信。",
+                "九四：悔亡，有孚改命，吉。------悔亡，有诚信改命，吉。",
+                "九五：大人虎变，未占有孚。------君子像虎纹变化，不占卦已有诚信。",
+                "上六：君子豹变，小人革面；征凶，居贞吉。------君子像豹纹变化，小人改变脸色；出征凶，居守吉。"
+            ],
+            [ // 49 鼎卦
+                "初六：鼎颠趾，利出否；得妾以其子，无咎。------鼎足颠倒，利于倒出废物；得妾与其子，无灾。",
+                "九二：鼎有实，我仇有疾，不我能即，吉。------鼎有食物，仇人有病，不能害我，吉。",
+                "九三：鼎耳革，其行塞，雉膏不食；方雨亏悔，终吉。------鼎耳脱落，行动受阻，美食不能吃；下雨悔消，终吉。",
+                "九四：鼎折足，覆公餗，其形渥，凶。------鼎足折断，打翻美食，污秽不堪，凶。",
+                "六五：鼎黄耳金铉，利贞。------鼎有黄耳金铉，利于守正。",
+                "上九：鼎玉铉，大吉，无不利。------鼎有玉铉，大吉，无不利。"
+            ],
+            [ // 50 震卦
+                "初九：震来虩虩，笑言哑哑，吉。------雷声来临恐惧，然后谈笑自若，吉。",
+                "六二：震来厉，亿丧贝，跻于九陵，勿逐，七日得。------雷声危险，丢失钱财，登上高陵，不用追，七日复得。",
+                "六三：震苏苏，震行无眚。------雷声恐惧，行动无灾。",
+                "九四：震遂泥。------雷声陷入泥泞，恐惧不能自拔。",
+                "六五：震往来厉，亿无丧，有事。------雷声往来危险，无丧失，有祭祀之事。",
+                "上六：震索索，视矍矍，征凶；震不于其躬，于其邻，无咎；婚媾有言。------雷声恐惧发抖，目光惊慌，出征凶；灾难不在自身，在邻居，无灾；婚姻有闲话。"
+            ],
+            [ // 51 艮卦
+                "初六：艮其趾，无咎，利永贞。------停止在脚趾，无灾，利于长久守正。",
+                "六二：艮其腓，不拯其随，其心不快。------停止在小腿，不能跟随，心中不快。",
+                "九三：艮其限，列其夤，厉，薰心。------停止在腰部，撕裂肌肉，危险，心如火烧。",
+                "六四：艮其身，无咎。------停止在身体，无灾祸。",
+                "六五：艮其辅，言有序，悔亡。------停止在口舌，言语有序，悔亡。",
+                "上九：敦艮，吉。------敦厚停止，吉祥。"
+            ],
+            [ // 52 渐卦
+                "初六：鸿渐于干，小子厉，有言，无咎。------大雁渐停在岸边，小子危险，有闲话，无灾。",
+                "六二：鸿渐于磐，饮食衎衎，吉。------大雁渐停在大石，饮食和乐，吉。",
+                "九三：鸿渐于陆，夫征不复，妇孕不育，凶；利御寇。------大雁渐停在高地，丈夫出征不回，妇女怀孕不育，凶；利于防御盗寇。",
+                "六四：鸿渐于木，或得其桷，无咎。------大雁渐停在树上，栖在横木，无灾。",
+                "九五：鸿渐于陵，妇三岁不孕，终莫之胜，吉。------大雁渐停在山陵，妇女三年不孕，终不可欺，吉。",
+                "上九：鸿渐于陆，其羽可用为仪，吉。------大雁渐停在高地，羽毛可作仪饰，吉。"
+            ],
+            [ // 53 归妹卦
+                "初九：归妹以娣，跛能履，征吉。------嫁女作为陪嫁娣，跛脚能行走，出征吉。",
+                "九二：眇能视，利幽人之贞。------眼瞎能看，利于隐士守正。",
+                "六三：归妹以须，反归以娣。------嫁女等待，反回做陪嫁。",
+                "九四：归妹愆期，迟归有时。------嫁女延误婚期，迟嫁有时机。",
+                "六五：帝乙归妹，其君之袂，不如其娣之袂良；月几望，吉。------帝王嫁女，正房衣饰不如陪嫁；月近十五，吉。",
+                "上六：女承筐无实，士刲羊无血，无攸利。------女子捧筐无物，男子杀羊无血，无利。"
+            ],
+            [ // 54 丰卦
+                "初九：遇其配主，虽旬无咎，过旬灾也。------遇见相配主人，十天内无灾，过十天有灾。",
+                "六二：丰其蔀，日中见斗，往得疑疾；有孚发若，吉。------遮蔽丰盛，中午见星，前往被猜疑；诚信启发，吉。",
+                "九三：丰其沛，日中见沫；折其右肱，无咎。------遮蔽更甚，中午见小星；折断右臂，无灾。",
+                "九四：丰其蔀，日中见斗；遇其夷主，吉。------遮蔽丰盛，中午见星；遇见平易主人，吉。",
+                "六五：来章，有庆誉，吉。------招来文采，有喜庆荣誉，吉。",
+                "上六：丰其屋，蔀其家，窥其户，阒其无人，三岁不觌，凶。------房屋丰盛，遮蔽家院，窥门寂静无人，三年不见，凶。"
+            ],
+            [ // 55 旅卦
+                "初六：旅琐琐，斯其所取灾。------旅行琐碎吝啬，这是自取灾祸。",
+                "六二：旅即次，怀其资，得童仆，贞。------旅行住客舍，怀揣资财，得童仆，守正。",
+                "九三：旅焚其次，丧其童仆，贞厉。------旅行客舍被烧，丧失童仆，守正有危。",
+                "九四：旅于处，得其资斧，我心不快。------旅行居处，得到资财，心中不快。",
+                "六五：射雉，一矢亡，终以誉命。------射野鸡，丢失一箭，终获荣誉任命。",
+                "上九：鸟焚其巢，旅人先笑后号咷；丧牛于易，凶。------鸟窝被烧，旅人先笑后哭；在田场丢失牛，凶。"
+            ],
+            [ // 56 巽卦
+                "初六：进退，利武人之贞。------进退犹豫，利于武人守正。",
+                "九二：巽在床下，用史巫纷若，吉，无咎。------顺从在床下，用史巫祷告，吉，无灾。",
+                "九三：频巽，吝。------频繁顺从，有困难。",
+                "六四：悔亡，田获三品。------悔亡，田猎获三种猎物。",
+                "九五：贞吉，悔亡，无不利；无初有终；先庚三日，后庚三日，吉。------守正吉，悔亡，无不利；开始不好结果好；庚日前三天后三天，吉。",
+                "上九：巽在床下，丧其资斧，贞凶。------顺从在床下，丧失资财，守正凶。"
+            ],
+            [ // 57 兑卦
+                "初九：和兑，吉。------和悦相处，吉祥。",
+                "九二：孚兑，吉，悔亡。------诚信和悦，吉，悔亡。",
+                "六三：来兑，凶。------前来讨好取悦，凶险。",
+                "九四：商兑，未宁，介疾有喜。------商谈和悦，未安宁，小病有喜。",
+                "九五：孚于剥，有厉。------诚信于消剥之时，有危险。",
+                "上六：引兑。------引导取悦，不宜主动。"
+            ],
+            [ // 58 涣卦
+                "初六：用拯马壮，吉。------用壮马拯救，吉祥。",
+                "九二：涣奔其机，悔亡。------涣散奔向几案，悔亡。",
+                "六三：涣其躬，无悔。------涣散自身，无悔。",
+                "六四：涣其群，元吉；涣有丘，匪夷所思。------涣散朋党，大吉；涣散成山丘，不可思议。",
+                "九五：涣汗其大号，涣王居，无咎。------像出汗一样发布号令，涣散君王居处，无灾。",
+                "上九：涣其血，去逖出，无咎。------涣散血液，远离忧患，无灾。"
+            ],
+            [ // 59 节卦
+                "初九：不出户庭，无咎。------不走出户庭，无灾祸。",
+                "九二：不出门庭，凶。------不走出门庭，凶险。",
+                "六三：不节若，则嗟若，无咎。------不能节制，就会叹息，无灾。",
+                "六四：安节，亨。------安于节制，亨通。",
+                "九五：甘节，吉；往有尚。------甘美节制，吉；前往受崇尚。",
+                "上六：苦节，贞凶，悔亡。------以节制为苦，守正凶，悔亡。"
+            ],
+            [ // 60 中孚卦
+                "初九：虞吉，有它不燕。------安守诚信吉，有变故不安。",
+                "九二：鸣鹤在阴，其子和之；我有好爵，吾与尔靡之。------鹤在树荫鸣叫，小鹤应和；我有好酒，与你共饮。",
+                "六三：得敌，或鼓或罢，或泣或歌。------遇到敌人，或击鼓或停止，或哭泣或歌唱。",
+                "六四：月几望，马匹亡，无咎。------月近十五，马匹丢失，无灾。",
+                "九五：有孚挛如，无咎。------诚信相连，无灾祸。",
+                "上九：翰音登于天，贞凶。------飞鸟鸣声登天，名不副实，守正凶。"
+            ],
+            [ // 61 小过卦
+                "初六：飞鸟以凶。------飞鸟逆行，凶险。",
+                "六二：过其祖，遇其妣；不及其君，遇其臣；无咎。------越过祖父，遇祖母；不及君主，遇臣子；无灾。",
+                "九三：弗过防之，从或戕之，凶。------不过分防备，跟从被害，凶。",
+                "九四：无咎，弗过遇之；往厉，必戒，勿用永贞。------无灾，不过分相遇；前往危，必警戒，不可长久施用。",
+                "六五：密云不雨，自我西郊；公弋取彼在穴。------密云不雨，来自西郊；王公射取洞穴之物。",
+                "上六：弗遇过之，飞鸟离之，凶，是谓灾眚。------不相遇而过分，飞鸟被射杀，凶，称为灾祸。"
+            ],
+            [ // 62 既济卦
+                "初九：曳其轮，濡其尾，无咎。------拖住车轮，沾湿尾巴，无灾祸。",
+                "六二：妇丧其茀，勿逐，七日得。------妇人丢失车饰，不用追，七日复得。",
+                "九三：高宗伐鬼方，三年克之；小人勿用。------高宗讨伐鬼方，三年攻克；不用小人。",
+                "六四：繻有衣袽，终日戒。------华美衣服变破敝，终日警戒。",
+                "九五：东邻杀牛，不如西邻之禴祭，实受其福。------东边杀牛厚祭，不如西边薄祭，实得福佑。",
+                "上六：濡其首，厉。------沾湿头部，危险。"
+            ],
+            [ // 63 未济卦
+                "初六：濡其尾，吝。------沾湿尾巴，有困难。",
+                "九二：曳其轮，贞吉。------拖住车轮，守正吉祥。",
+                "六三：未济，征凶，利涉大川。------尚未成功，出征凶，利于渡大河。",
+                "九四：贞吉，悔亡；震用伐鬼方，三年有赏于大国。------守正吉，悔亡；奋发伐鬼方，三年受大国奖赏。",
+                "六五：贞吉，无悔；君子之光，有孚，吉。------守正吉，无悔；君子光辉，有诚信，吉。",
+                "上九：有孚于饮酒，无咎；濡其首，有孚失是。------饮酒诚信，无灾；饮酒沾湿头部，诚信失度。"
+            ]
+        ];
+
+        const hexagrams = [];
+        for(let i=0; i<64; i++) { hexagrams.push({ id:i, symbol:'??', name:`Hexagram ${i+1}`, meaning:'...' }); }
+
+        const views = { home:document.getElementById('view-home'), intro:document.getElementById('view-intro'), vortex:document.getElementById('view-vortex'), cards:document.getElementById('view-cards'), mahjong:document.getElementById('view-mahjong') };
+        let currentState = 'idle';
+        let blinkTimer = null; // 闪烁定时器
+
+        function switchView(viewName) {
+            destroyParticleBackground();
+            document.getElementById('view-cards').classList.remove('particle-active');
+            Object.values(views).forEach(el => el.classList.add('hidden'));
+            views[viewName].classList.remove('hidden');
+        }
+
+        function goHome() {
+            destroyParticleBackground();
+            document.getElementById('view-cards').classList.remove('particle-active');
+            const stage = document.getElementById('card-stage');
+            if(stage) { stage.classList.add('hidden'); stage.innerHTML = '<div id="focused-card-container" class="w-[300px] h-[450px] md:w-[360px] md:h-[540px] relative perspective-1000 pointer-events-auto cursor-pointer transition-all duration-700"></div>'; }
+            if(document.getElementById('card-columns')) { document.getElementById('card-columns').innerHTML = ''; document.getElementById('card-columns').style.opacity = '0'; }
+            if(document.getElementById('return-btn')) document.getElementById('return-btn').classList.add('hidden', 'opacity-0');
+            document.getElementById('gua-info-panel').classList.add('hidden');
+            if (blinkTimer) { clearTimeout(blinkTimer); blinkTimer = null; }
+            currentState = 'idle';
+            switchView('home');
+        }
+
+        function startDivination() {
+            switchView('vortex');
+            setTimeout(() => {
+                initCardScroll();
+                switchView('cards');
+                setTimeout(() => document.getElementById('card-columns').classList.remove('opacity-0'), 100);
+            }, 3000);
+        }
+
+        function initCardScroll() {
+            const container = document.getElementById('card-columns');
+            container.innerHTML = '';
+            // 确保容器本身是可见的
+            container.style.opacity = '1';
+            const columnsCount = window.innerWidth < 768 ? 2 : 6;
+            const cardsPerCol = Math.ceil(64 / columnsCount);
+            for (let c = 0; c < columnsCount; c++) {
+                const colDiv = document.createElement('div');
+                // 先去掉遮罩，保证各浏览器都能正常显示卡片
+                colDiv.className = 'relative h-[150vh] -top-[25vh] w-48 md:w-56 overflow-hidden';
+                const track = document.createElement('div');
+                const animClass = c % 2 === 0 ? 'animate-scroll-vertical' : 'animate-scroll-vertical-reverse';
+                track.className = `absolute left-0 w-full ${animClass} flex flex-col gap-6`;
+                const colCards = hexagrams.slice(c * cardsPerCol, (c + 1) * cardsPerCol);
+                const fullList = [...colCards, ...colCards, ...colCards];
+                fullList.forEach((cardData, idx) => {
+                    const cardEl = document.createElement('div');
+                    cardEl.className = 'w-full aspect-[2/3] rounded-xl relative cursor-pointer group hover:scale-105 transition-transform duration-300 shadow-xl overflow-hidden';
+                    cardEl.innerHTML = `<div class="absolute inset-0 bg-[#0f0720]"></div><img src="${cardBackUrl}" alt="Card Back" class="absolute inset-0 w-full h-full object-cover rounded-xl transition-all duration-300 opacity-90 group-hover:opacity-100" onerror="this.src='${fallbackCardBack}'"><div class="absolute inset-0 border border-purple-500/20 rounded-xl group-hover:border-purple-400/50 transition-colors z-10 pointer-events-none"></div><div class="absolute -inset-1 bg-purple-500/20 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>`;
+                    cardEl.onclick = (e) => selectCard(cardData, e);
+                    track.appendChild(cardEl);
+                });
+                colDiv.appendChild(track);
+                container.appendChild(colDiv);
+            }
+        }
+
+        function selectCard(data, event) {
+            if (currentState !== 'idle') return;
+            currentState = 'scrolling';
+            const cols = document.getElementById('card-columns');
+            cols.style.transition = 'opacity 0.5s ease';
+            cols.style.opacity = '0';
+            setTimeout(() => {
+                cols.innerHTML = '';
+                showFocusedCard(data);
+            }, 500);
+        }
+
+        // ---------- 粒子背景系统 ----------
+        let particleScene, particleCamera, particleRenderer, particlePoints, particlePositions, particleOriginalPositions, particleVelocities, particleAnimationFrame, particleMouse = new THREE.Vector2(-1000, -1000), particleActive = false;
+        let particleDispersing = false; // 新增：是否处于散开模式
+        
+        function startParticleAnimation() {
+            function animateParticles() {
+                if (!particleActive) return;
+                particleAnimationFrame = requestAnimationFrame(animateParticles);
+                if (particlePoints) {
+                    const posAttr = particlePoints.geometry.attributes.position;
+                    const posArray = posAttr.array;
+                    
+                    if (particleDispersing) {
+                        // 散开模式：粒子向外飞散并逐渐淡出
+                        // 逐渐降低透明度
+                        if (particlePoints.material.opacity > 0.01) {
+                            particlePoints.material.opacity *= 0.98;
+                        } else {
+                            // 透明度很低，销毁粒子
+                            destroyParticleBackground();
+                            particleDispersing = false;
+                            return;
+                        }
+                        // 更新位置：使用已有速度向外飞散，速度衰减
+                        for (let i = 0; i < posArray.length / 3; i++) {
+                            const ix = i*3, iy = i*3+1, iz = i*3+2;
+                            // 速度衰减
+                            particleVelocities[ix] *= 0.95;
+                            particleVelocities[iy] *= 0.95;
+                            particleVelocities[iz] *= 0.95;
+                            // 移动
+                            posArray[ix] += particleVelocities[ix];
+                            posArray[iy] += particleVelocities[iy];
+                            posArray[iz] += particleVelocities[iz];
+                        }
+                        posAttr.needsUpdate = true;
+                    } else {
+                        // 原有逻辑：鼠标力和回复力
+                        let vector = new THREE.Vector3(particleMouse.x, particleMouse.y, 0.5);
+                        vector.unproject(particleCamera);
+                        let dir = vector.sub(particleCamera.position).normalize();
+                        let dist = -particleCamera.position.z / dir.z;
+                        let mousePos = particleCamera.position.clone().add(dir.multiplyScalar(dist));
+                        for (let i = 0; i < posArray.length / 3; i++) {
+                            const ix = i*3, iy = i*3+1, iz = i*3+2;
+                            const cx = posArray[ix], cy = posArray[iy], cz = posArray[iz];
+                            const tx = particleOriginalPositions[ix], ty = particleOriginalPositions[iy], tz = particleOriginalPositions[iz];
+                            const dx = mousePos.x - cx, dy = mousePos.y - cy, dz = mousePos.z - cz;
+                            const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                            const MOUSE_RADIUS = 120, MOUSE_STRENGTH = 1.2;
+                            if (d < MOUSE_RADIUS) {
+                                const force = (MOUSE_RADIUS - d) / MOUSE_RADIUS;
+                                particleVelocities[ix] -= dx * force * MOUSE_STRENGTH;
+                                particleVelocities[iy] -= dy * force * MOUSE_STRENGTH;
+                                particleVelocities[iz] -= dz * force * MOUSE_STRENGTH;
+                            }
+                            const RETURN_SPEED = 0.07;
+                            particleVelocities[ix] += (tx - cx) * RETURN_SPEED;
+                            particleVelocities[iy] += (ty - cy) * RETURN_SPEED;
+                            particleVelocities[iz] += (tz - cz) * RETURN_SPEED;
+                            particleVelocities[ix] *= 0.85; particleVelocities[iy] *= 0.85; particleVelocities[iz] *= 0.85;
+                            posArray[ix] += particleVelocities[ix]; posArray[iy] += particleVelocities[iy]; posArray[iz] += particleVelocities[iz];
+                        }
+                        posAttr.needsUpdate = true;
+                    }
+                }
+                particleRenderer.render(particleScene, particleCamera);
+            }
+            animateParticles();
+        }
+
+        function startDisperseParticles() {
+            if (!particleActive || particleDispersing) return;
+            particleDispersing = true;
+            // 给每个粒子一个向外的初始速度，使其四散
+            if (particlePoints && particleVelocities) {
+                const posAttr = particlePoints.geometry.attributes.position;
+                const posArray = posAttr.array;
+                for (let i = 0; i < posArray.length / 3; i++) {
+                    const ix = i*3, iy = i*3+1, iz = i*3+2;
+                    const cx = posArray[ix], cy = posArray[iy], cz = posArray[iz];
+                    const dir = new THREE.Vector3(cx, cy, cz).normalize();
+                    const speed = 0.8 + Math.random() * 0.5; // 随机速度
+                    particleVelocities[ix] += dir.x * speed;
+                    particleVelocities[iy] += dir.y * speed;
+                    particleVelocities[iz] += dir.z * speed;
+                }
+            }
+        }
+
+        function generateFallbackParticles(cardId) {
+            const geometry = new THREE.BufferGeometry();
+            const total = 20000;
+            const positions = new Float32Array(total * 3);
+            const colors = new Float32Array(total * 3);
+            const hue = (cardId * 0.05) % 1.0;
+            for (let i = 0; i < total; i++) {
+                positions[i*3] = (Math.random() - 0.5) * 500;
+                positions[i*3+1] = (Math.random() - 0.5) * 400;
+                positions[i*3+2] = (Math.random() - 0.5) * 50;
+                const r = Math.sin(hue * Math.PI * 2 + 0) * 0.5 + 0.5;
+                const g = Math.sin(hue * Math.PI * 2 + 2) * 0.5 + 0.5;
+                const b = Math.sin(hue * Math.PI * 2 + 4) * 0.5 + 0.5;
+                colors[i*3] = r * (0.8 + 0.4 * Math.random());
+                colors[i*3+1] = g * (0.8 + 0.4 * Math.random());
+                colors[i*3+2] = b * (0.8 + 0.4 * Math.random());
+            }
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            const material = new THREE.PointsMaterial({ size: 2.5, vertexColors: true, transparent: true, opacity: 0.9, blending: THREE.AdditiveAlphaBlending, depthWrite: false });
+            particlePoints = new THREE.Points(geometry, material);
+            particleScene.add(particlePoints);
+            particleActive = true;
+            particlePositions = positions.slice();
+            particleOriginalPositions = positions.slice();
+            particleVelocities = new Float32Array(total * 3);
+            startParticleAnimation();
+        }
+
+        function initParticleFromImage(imageUrl, cardId) {
+            destroyParticleBackground();
+            // 卡牌层级已由CSS固定为10000，无需动态设置
+            document.getElementById('particle-canvas-container').classList.add('active');
+            document.getElementById('view-cards').classList.add('particle-active');
+            const canvas = document.getElementById('particle-canvas');
+            particleScene = new THREE.Scene();
+            particleCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
+            particleCamera.position.z = 700;
+            particleRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+            particleRenderer.setSize(window.innerWidth, window.innerHeight);
+            particleRenderer.setPixelRatio(window.devicePixelRatio);
+            particleRenderer.setClearColor(0x050505, 0);
+            const img = new Image();
+            img.crossOrigin = "Anonymous";
+            img.src = imageUrl;
+            img.onload = () => {
+                try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const aspect = img.width / img.height;
+                    canvas.width = 240;
+                    canvas.height = canvas.width / aspect;
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    createParticlesFromData(imgData, canvas.width, canvas.height);
+                } catch (e) { generateFallbackParticles(cardId); }
+            };
+            img.onerror = () => generateFallbackParticles(cardId);
+        }
+
+        function createParticlesFromData(imgData, w, h) {
+            const geometry = new THREE.BufferGeometry();
+            const total = w * h;
+            particlePositions = new Float32Array(total * 3);
+            particleOriginalPositions = new Float32Array(total * 3);
+            const colors = new Float32Array(total * 3);
+            particleVelocities = new Float32Array(total * 3);
+            const scale = 2.2;
+            const data = imgData.data;
+            for (let i = 0; i < total; i++) {
+                const x = (i % w - w / 2) * scale;
+                const y = (-(Math.floor(i / w)) + h / 2) * scale;
+                const z = (Math.random() - 0.5) * 8;
+                particlePositions[i*3] = x; particlePositions[i*3+1] = y; particlePositions[i*3+2] = z;
+                particleOriginalPositions[i*3] = x; particleOriginalPositions[i*3+1] = y; particleOriginalPositions[i*3+2] = z;
+                colors[i*3] = data[i*4]/255; colors[i*3+1] = data[i*4+1]/255; colors[i*3+2] = data[i*4+2]/255;
+                particleVelocities[i*3] = 0; particleVelocities[i*3+1] = 0; particleVelocities[i*3+2] = 0;
+            }
+            geometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            const material = new THREE.PointsMaterial({ size: 2.5, vertexColors: true, transparent: true, opacity: 0.95, blending: THREE.AdditiveAlphaBlending, depthWrite: false });
+            particlePoints = new THREE.Points(geometry, material);
+            particleScene.add(particlePoints);
+            particleActive = true;
+            startParticleAnimation();
+        }
+
+        function destroyParticleBackground() {
+            if (particleAnimationFrame) { cancelAnimationFrame(particleAnimationFrame); particleAnimationFrame = null; }
+            if (particleScene) { particleScene.traverse(obj => { if (obj.geometry) obj.geometry.dispose(); }); particleScene.clear(); particleScene = null; }
+            if (particleRenderer) { particleRenderer.dispose(); particleRenderer = null; }
+            particlePoints = null; particleActive = false;
+            particleDispersing = false; // 重置散开标志
+            document.getElementById('particle-canvas-container').classList.remove('active');
+            document.getElementById('view-cards').classList.remove('particle-active');
+            // 无需恢复卡牌zIndex，已由CSS固定
+        }
+        window.addEventListener('mousemove', (e) => { particleMouse.x = (e.clientX / window.innerWidth) * 2 - 1; particleMouse.y = -(e.clientY / window.innerHeight) * 2 + 1; });
+
+        function showFocusedCard(data) {
+            const stage = document.getElementById('card-stage');
+            stage.classList.remove('hidden');
+            const container = document.getElementById('focused-card-container');
+            container.innerHTML = `
+                <div id="active-card" class="card-flip-inner relative w-full h-full shadow-[0_0_60px_rgba(139,92,246,0.2)] rounded-2xl">
+                    <div class="absolute inset-0 w-full h-full backface-hidden bg-[#0a0514] rounded-2xl overflow-hidden">
+                        <img src="${cardBackUrl}" alt="Card Back" class="w-full h-full object-cover" onerror="this.src='${fallbackCardBack}'">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none"></div>
+                        <div class="absolute inset-0 border border-white/10 rounded-2xl pointer-events-none"></div>
+                    </div>
+                    <div class="absolute inset-0 w-full h-full backface-hidden rotate-y-180 rounded-2xl overflow-hidden border border-purple-400/40 shadow-[0_0_50px_rgba(139,92,246,0.15)]">
+                        <img src="${guaImageUrls[data.id]}" alt="${data.name}" class="w-full h-full object-cover" onerror="this.style.backgroundColor='#4c1d95'">
+                    </div>
+                </div>
+            `;
+            currentState = 'focused';
+            const cardInner = document.getElementById('active-card');
+            container.onclick = () => {
+                if(currentState === 'focused') {
+                    cardInner.parentElement.classList.add('flipped');
+                    currentState = 'revealed';
+                    initParticleFromImage(guaImageUrls[data.id], data.id);
+                    showGuaInfoPanel(data.id);
+                    // 5秒后左侧方框闪烁提示（此处保持5秒，但返回按钮为10秒）
+                    if (blinkTimer) clearTimeout(blinkTimer);
+                    blinkTimer = setTimeout(() => {
+                        const leftBox = document.querySelector('.gua-left');
+                        if (leftBox) leftBox.classList.add('blink');
+                    }, 5000);
+                    
+                    // 10秒后显示返回按钮（按要求修改为10秒）
+                    setTimeout(() => {
+                        const btn = document.getElementById('return-btn');
+                        btn.classList.remove('hidden');
+                        void btn.offsetWidth;
+                        btn.classList.remove('opacity-0', 'translate-y-4');
+                    }, 10000);
+                } else if (currentState === 'revealed') {
+                    // 粒子效果交互：点击卡牌，粒子四散消失/恢复
+                    if (particleActive && !particleDispersing) {
+                        // 粒子存在且未散开：开始散开，并增强卡牌发光
+                        startDisperseParticles();
+                        container.classList.add('glow-strong');
+                    } else {
+                        // 粒子已消失或正在散开：重新初始化粒子，移除强光
+                        destroyParticleBackground();
+                        initParticleFromImage(guaImageUrls[data.id], data.id);
+                        container.classList.remove('glow-strong');
+                    }
+                }
+            };
+        }
+
+        // 显示卦象信息面板，包含序号、名称、概括、六爻，并添加爻辞弹窗 + 点击提示图标（已修改：新增爻辞注释，图标下移）
+        function showGuaInfoPanel(guaId) {
+            const panel = document.getElementById('gua-info-panel');
+            const gua = guaDetails[guaId] || guaDetails[0];
+            const yaoParts = gua.yao.trim().split(/\s+/);
+            let yaoHtml = '';
+            yaoParts.forEach(yao => {
+                if (yao === '---' || yao.includes('---')) {
+                    yaoHtml += '<div class="yang-line"></div>';
+                } else {
+                    yaoHtml += '<div class="yin-line"><div></div><div></div></div>';
+                }
+            });
+            // 生成爻辞HTML
+            const yaoList = yaoTexts[guaId] || yaoTexts[0];
+            let yaoPopupHtml = '<div class="yao-popup" id="yaoPopup">';
+            yaoList.forEach(text => {
+                yaoPopupHtml += `<div class="yao-item"><span class="yao-name">${text.split('：')[0]}</span><span class="yao-desc">：${text.split('：')[1] || ''}</span></div>`;
+            });
+            yaoPopupHtml += '</div>';
+
+            const indexText = `第${guaId+1}卦·${gua.name}`;
+            
+            // 新增爻辞注释区块
+            const commentaryHtml = `
+                <div class="yao-commentary mt-4 pt-2 border-t border-purple-500/20">
+                    <h4 class="story-title text-base mb-1">爻辞注释</h4>
+                    <p class="story-text text-xs leading-relaxed">爻辞是《易经》文本体系中依附于每一爻的解说文辞，是对单爻所处时、位、阴阳、境遇、吉凶与行为准则的系统性阐释。每一卦含六爻，自下而上依次为初、二、三、四、五、上，阳爻称九、阴爻称六，与爻辞共同构成 “爻题 — 象喻 — 断语 — 诫命” 的完整结构。从功能上看，卦辞总括一卦全局大势，爻辞细化阶段变化与具体处境，二者互为表里。爻辞以物象、人事、情境为喻，揭示事物在发展过程中不同节点的阴阳消长、得失利弊，并以吉、凶、厉、吝、悔、无咎等判断给出价值指向，最终落脚于守正、待时、慎行、修德的实践指引，是《易经》从天道规律通向人事应用的关键载体。爻辞的核心不在于宿命式的吉凶判定，而在于以时位定境遇，以德性定成败，通过对每一阶段处境的精准描摹，为人在进退、取舍、安危之际提供可践行的处世智慧与行动原则。</p>
+                </div>
+            `;
+
+            // 图标下移，改为流式布局，不再绝对定位
+            const clickHintHtml = `
+                <div class="click-hint flex justify-end mt-3 mb-2 pr-2">
+                    <div class="bg-purple-900/50 rounded-full p-1.5 backdrop-blur-sm border border-purple-400/30 text-purple-200 animate-pulse inline-flex items-center gap-1 text-xs">
+                        <iconify-icon icon="lucide:mouse-pointer-click" width="16" height="16"></iconify-icon>
+                        <span class="sr-only md:not-sr-only md:inline-block">点击查看爻辞</span>
+                    </div>
+                </div>
+            `;
+
+            panel.innerHTML = `
+                <div class="gua-left glass" id="guaLeftBox">
+                    <div class="gua-index">${indexText}</div>
+                    <div class="gua-summary">${gua.summary}</div>
+                    <div class="yao-container">${yaoHtml}</div>
+                    ${commentaryHtml}
+                    ${yaoPopupHtml}
+                    ${clickHintHtml}
+                </div>
+                <div class="gua-right glass">
+                    <div class="story-title">✨ 启示故事</div>
+                    <div class="story-text">${gua.story}</div>
+                </div>
+            `;
+            panel.classList.remove('hidden');
+
+            // 为左侧方框添加点击事件，切换爻辞弹窗显示，并隐藏提示图标
+            const leftBox = document.getElementById('guaLeftBox');
+            const popup = document.getElementById('yaoPopup');
+            leftBox.addEventListener('click', (e) => {
+                // 防止点击弹窗内部时关闭
+                if (popup.contains(e.target)) return;
+                // 隐藏点击提示图标（如果存在）
+                const hint = leftBox.querySelector('.click-hint');
+                if (hint) hint.classList.add('hidden');
+                popup.classList.toggle('show');
+                // 点击后移除闪烁效果
+                leftBox.classList.remove('blink');
+                if (blinkTimer) clearTimeout(blinkTimer);
+            });
+        }
+
+        // ---------- 麻将手势游戏脚本（已从 `手势交互/手势交互.html` 合并，并改为“点击开始”触发） ----------
+        // 说明：
+        // - 原文件使用 window.onload 自动启动，这里改为 initMahjongGame() 启动
+        // - 为避免重复初始化，使用 window.__mergedGestureGameStarted 进行幂等控制
+
+        // ==================== 原第一个文件的完整内容（已增加梅兰竹菊） ====================
+        // 麻将牌正面图片URL映射 (已添加梅兰竹菊)
+        const TILE_IMAGE_URLS = {
+            // 万
+            '1万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/LA3o/1617X1617/1yiwan.png/webp',
+            '2万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Jbxt/1617X1617/2erwan.png/webp',
+            '3万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Y7Ga/1617X1617/3sanwan.png/webp',
+            '4万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/L1GO/1617X1617/4siwan.png/webp',
+            '5万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Jcg8/1617X1617/5wuwan.png/webp',
+            '6万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/sVlO/1617X1617/6liuwan.png/webp',
+            '7万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/K9Jp/1617X1617/7qiwan.png/webp',
+            '8万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/O34i/1617X1617/8bawan.png/webp',
+            '9万': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/mnuE/1617X1617/9jiuwan.png/webp',
+
+            // 筒
+            '1筒': 'https://img.heliar.top/file/1773305145270_yitong.png',
+            '2筒': 'https://img.heliar.top/file/1773305133525_ertong.png',
+            '3筒': 'https://img.heliar.top/file/1773305134605_santong.png',
+            '4筒': 'https://img.heliar.top/file/1773305141315_sitong.png',
+            '5筒': 'https://img.heliar.top/file/1773305141030_wutong.png',
+            '6筒': 'https://img.heliar.top/file/1773305137550_liutong.png',
+            '7筒': 'https://img.heliar.top/file/1773305136133_qitong.png',
+            '8筒': 'https://img.heliar.top/file/1773305140201_batong.png',
+            '9筒': 'https://img.heliar.top/file/1773305136176_jiutong.png',
+
+            // 条
+            '1条': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/lLtX/1617X1617/1.1.1yitiao.png/webp',
+            '2条': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/v143/1617X1617/1.1.2ertiao.png/webp',
+            '3条': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/axzI/1617X1617/1.1.3santiao.png/webp',
+            '4条': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/3Yjm/1617X1617/1.1.4sitiao.png/webp',
+            '5条': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/zG2b/1617X1617/1.1.5wutiao.png/webp',
+            '6条': 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260204/TQUG/1617X1617/1.1.6liutiao.png/webp',
+            '7条': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/wjl3/1617X1617/1.1.7qitiao.png/webp',
+            '8条': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/of5D/1617X1617/1.1.8batiao.png/webp',
+            '9条': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/t3xL/1617X1617/1.1.9jiutiao.png/webp',
+
+            // 特殊牌
+            '东': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/eEyJ/1617X1617/dong.png/webp',
+            '南': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/Nuvb/1617X1617/nan.png/webp',
+            '西': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/AJXN/1617X1617/xi.png/webp',
+            '北': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/bZfC/1617X1617/bei.png/webp',
+            '中': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/Af0S/1617X1617/zhong.png/webp',
+            '发': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/I1nJ/1617X1617/fa.png/webp',
+            '白': 'https://test.fukit.cn/autoupload/f/ohvXMELJafMGn4nc6ihRRNiO_OyvX7mIgxFBfDMDErs/20260204/4c1D/1617X1617/bai.png/webp',
+            '春': 'https://img.heliar.top/file/1773305141216_1chun.png',
+            '夏': 'https://img.heliar.top/file/1773305159003_1xia.png',
+            '秋': 'https://img.heliar.top/file/1773305144141_1qiu.png',
+            '冬': 'https://img.heliar.top/file/1773305149387_1dongji.png',
+            '梅': 'https://img.heliar.top/file/1773305145895_1mei.png',
+            '兰': 'https://img.heliar.top/file/1773305151176_1lan.png',
+            '竹': 'https://img.heliar.top/file/1773305158334_1zhu.png',
+            '菊': 'https://img.heliar.top/file/1773305142900_1ju.png'
+        };
+
+        const CONFIG = {
+            baseProb: 0.85,
+            maxTiles: 144,
+            suits: ['筒', '条', '万'],
+            special: ['东','南','西','北','中','发','白','春','夏','秋','冬','梅','兰','竹','菊'],
+            backImage: 'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Izw6/1617X1617/%E6%9C%AA%E6%A0%87%E9%A2%98-1_%E7%94%BB%E6%9D%BF_1_%E5%89%AF%E6%9C%AC_38.png/webp',
+            enableHandRotation: true,
+            rotationSensitivity: 1.0,
+            maxRotationAngle: Math.PI * 2,
+            defaultRotation: 0,
+        };
+
+        const TILES = { base: [], special: [] };
+        function initTiles() {
+            TILES.base = [];
+            TILES.special = [];
+            CONFIG.suits.forEach((suit) => {
+                for (let i = 1; i <= 9; i++) {
+                    for (let k = 0; k < 4; k++) {
+                        const tileName = `${i}${suit}`;
+                        TILES.base.push({
+                            name: tileName,
+                            val: i,
+                            type: suit,
+                            imageUrl: TILE_IMAGE_URLS[tileName] || CONFIG.backImage,
+                        });
+                    }
+                }
+            });
+            CONFIG.special.forEach((name) => {
+                for (let k = 0; k < 4; k++) {
+                    TILES.special.push({
+                        name,
+                        type: '特殊',
+                        imageUrl: TILE_IMAGE_URLS[name] || CONFIG.backImage,
+                    });
+                }
+            });
+        }
+        initTiles();
+
+        let scene, camera, renderer;
+        let tileMeshes = [];
+        let animationId = null;
+        let cameraUtils = null;
+        let currentRotation = CONFIG.defaultRotation;
+        let targetRotation = CONFIG.defaultRotation;
+
+        const textures = new Map();
+        async function loadTexture(url) {
+            if (textures.has(url)) return textures.get(url);
+            const loader = new THREE.TextureLoader();
+            const tex = await new Promise((resolve, reject) => {
+                loader.load(
+                    url,
+                    (t) => resolve(t),
+                    undefined,
+                    (err) => reject(err)
+                );
+            });
+            tex.minFilter = THREE.LinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            textures.set(url, tex);
+            return tex;
+        }
+
+        function setLoading(progress, text) {
+            const progressInner = document.getElementById('progress-inner');
+            const loadingText = document.getElementById('loading-text');
+            if (progressInner) progressInner.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+            if (loadingText && text) loadingText.innerText = text;
+        }
+
+        async function loadAllTextures() {
+            const urls = new Set([CONFIG.backImage]);
+            [...TILES.base, ...TILES.special].forEach((t) => urls.add(t.imageUrl));
+            const list = Array.from(urls);
+            const total = list.length;
+            let done = 0;
+            for (const url of list) {
+                try {
+                    await loadTexture(url);
+                } catch (e) {
+                    // 单张失败不致命：继续
+                    console.warn('纹理加载失败:', url, e);
+                } finally {
+                    done += 1;
+                    setLoading(Math.round((done / total) * 80), `正在加载卡牌纹理... (${done}/${total})`);
+                }
+            }
+        }
+
+        function clearScene() {
+            if (animationId) cancelAnimationFrame(animationId);
+            animationId = null;
+            if (renderer && renderer.domElement && renderer.domElement.parentNode) {
+                renderer.domElement.parentNode.removeChild(renderer.domElement);
+            }
+            if (renderer) {
+                try { renderer.dispose(); } catch (_) {}
+            }
+            renderer = null;
+            scene = null;
+            camera = null;
+            tileMeshes = [];
+        }
+
+        function initScene() {
+            clearScene();
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio || 1);
+            renderer.domElement.style.position = 'absolute';
+            renderer.domElement.style.inset = '0';
+            renderer.domElement.style.zIndex = '10';
+            document.getElementById('view-mahjong').appendChild(renderer.domElement);
+
+            const ambient = new THREE.AmbientLight(0xffffff, 0.9);
+            scene.add(ambient);
+            const light = new THREE.PointLight(0x8b5cf6, 2.5, 150);
+            light.position.set(0, 10, 20);
+            scene.add(light);
+
+            camera.position.set(0, 0, 0);
+            camera.lookAt(0, 0, -1);
+
+            const geometry = new THREE.BoxGeometry(0.8, 1.1, 0.08);
+            const backTex = textures.get(CONFIG.backImage);
+
+            // 简化：随机生成 144 张牌的“漂浮层”
+            for (let i = 0; i < CONFIG.maxTiles; i++) {
+                const tileData = i < TILES.base.length ? TILES.base[i] : TILES.special[i % TILES.special.length];
+                const frontTex = textures.get(tileData.imageUrl) || backTex;
+
+                const frontMaterial = new THREE.MeshBasicMaterial({ map: frontTex, transparent: true, opacity: 0 });
+                const backMaterial = new THREE.MeshBasicMaterial({ map: backTex, transparent: true, opacity: 1 });
+                const sideMaterial = new THREE.MeshStandardMaterial({ color: 0xeaeaea });
+                const mats = [sideMaterial, sideMaterial, sideMaterial, sideMaterial, frontMaterial, backMaterial];
+
+                const mesh = new THREE.Mesh(geometry, mats);
+                mesh.position.set((Math.random() - 0.5) * 28, (Math.random() - 0.5) * 18, -30 - Math.random() * 90);
+                mesh.rotation.set((Math.random() - 0.5) * 0.2, Math.PI, (Math.random() - 0.5) * 0.2);
+                mesh.userData = {
+                    tileData,
+                    backMaterial,
+                    frontMaterial,
+                    isFlipped: false,
+                    offset: Math.random() * Math.PI * 2,
+                    speed: 0.5 + Math.random() * 0.8,
+                    originalPos: mesh.position.clone(),
+                    originalRot: mesh.rotation.clone(),
+                    originalScale: { x: 1, y: 1, z: 1 },
+                };
+                scene.add(mesh);
+                tileMeshes.push(mesh);
+            }
+        }
+
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+            window.animationId = animationId;
+            if (!renderer || !scene || !camera) return;
+
+            // 视角旋转插值
+            currentRotation += (targetRotation - currentRotation) * 0.08;
+            camera.rotation.y = currentRotation;
+
+            const t = Date.now() * 0.001;
+            tileMeshes.forEach((m) => {
+                m.position.y = m.userData.originalPos.y + Math.sin(t * m.userData.speed + m.userData.offset) * 0.25;
+            });
+
+            TWEEN.update();
+            renderer.render(scene, camera);
+        }
+
+        const videoElement = document.getElementById('cam-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+
+        function isPinching(marks) {
+            const thumb = marks[4];
+            const index = marks[8];
+            const dx = thumb.x - index.x;
+            const dy = thumb.y - index.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            return dist < 0.06;
+        }
+
+        let lastGrabTime = 0;
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        function tryGrab(marks) {
+            if (!camera) return;
+            const now = Date.now();
+            if (now - lastGrabTime < 1200) return;
+            lastGrabTime = now;
+
+            const index = marks[8];
+            mouse.x = -(index.x * 2 - 1);
+            mouse.y = -(index.y * 2 - 1);
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(tileMeshes);
+            const target = intersects.length ? intersects[0].object : tileMeshes[Math.floor(Math.random() * tileMeshes.length)];
+            if (!target) return;
+
+            const mesh = target;
+            const data = mesh.userData.tileData;
+
+            new TWEEN.Tween(mesh.position).to({ x: 0, y: 0, z: -10 }, 900).easing(TWEEN.Easing.Quadratic.Out).start();
+            new TWEEN.Tween(mesh.rotation).to({ y: 0 }, 900).easing(TWEEN.Easing.Quadratic.Out).start();
+            if (mesh.userData.frontMaterial && mesh.userData.backMaterial) {
+                mesh.userData.frontMaterial.opacity = 1;
+                mesh.userData.backMaterial.opacity = 0;
+            }
+
+            // 复用你页面里已有的“显示解析面板”能力（如果存在）
+            if (typeof showDrawResult === 'function') {
+                showDrawResult(data, mesh);
+            }
+        }
+
+        hands.onResults((results) => {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const marks = results.multiHandLandmarks[0];
+                if (CONFIG.enableHandRotation) {
+                    // 使用手掌中心 x 作为旋转目标
+                    const cx = marks[0].x; // wrist
+                    const delta = (cx - 0.5) * 2;
+                    targetRotation = THREE.MathUtils.clamp(
+                        CONFIG.defaultRotation + delta * CONFIG.rotationSensitivity,
+                        -CONFIG.maxRotationAngle,
+                        CONFIG.maxRotationAngle
+                    );
+                }
+                if (isPinching(marks)) {
+                    tryGrab(marks);
+                }
+            }
+            canvasCtx.restore();
+        });
+
+        async function initCamera() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            videoElement.srcObject = stream;
+            return new Promise((resolve) => {
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play();
+                    resolve();
+                };
+            });
+        }
+
+        function showGameUIReady() {
+            const overlay = document.getElementById('loading-overlay');
+            if (!overlay) return;
+            overlay.style.opacity = '0';
+            setTimeout(() => { overlay.style.display = 'none'; }, 500);
+        }
+
+        async function initMahjongGame() {
+            if (window.__mergedGestureGameStarted) return;
+            window.__mergedGestureGameStarted = true;
+
+            setLoading(0, '正在准备资源...');
+            document.getElementById('loading-overlay').style.display = 'flex';
+            document.getElementById('loading-overlay').style.opacity = '1';
+
+            try {
+                // 同步画布尺寸，避免绘制拉伸/黑屏
+                canvasElement.width = window.innerWidth;
+                canvasElement.height = window.innerHeight;
+
+                await loadAllTextures();
+                setLoading(85, '正在初始化场景...');
+                initScene();
+                animate();
+                setLoading(92, '正在初始化摄像头...');
+
+                await initCamera();
+                document.getElementById('cam-container').classList.remove('hidden');
+
+                cameraUtils = new Camera(videoElement, {
+                    onFrame: async () => { await hands.send({ image: videoElement }); },
+                    width: 320,
+                    height: 240,
+                });
+                window.cameraUtils = cameraUtils;
+                await cameraUtils.start();
+
+                setLoading(100, '加载完成！');
+                setTimeout(showGameUIReady, 300);
+                // 合并 `手势交互.html` 的后续脚本：麻将粒子背景 + 模态框监听
+                initMahjongParticleBackgroundOnce();
+                setupGuaModalParticleObserverOnce();
+            } catch (e) {
+                console.error('手势游戏启动失败:', e);
+                const loaderIcon = document.getElementById('loader-icon');
+                if (loaderIcon) loaderIcon.classList.add('hidden');
+                setLoading(100, '初始化失败');
+                const hint = document.getElementById('error-hint');
+                if (hint) hint.classList.remove('hidden');
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            if (!camera || !renderer) return;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ==================== 合并：麻将粒子背景（原 `手势交互.html` 第二段脚本） ====================
+        function initMahjongParticleBackgroundOnce() {
+            if (window.__mahjongParticleInited) return;
+            window.__mahjongParticleInited = true;
+
+            const MAHJONG_IMAGE_URLS = [
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/LA3o/1617X1617/1yiwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Jbxt/1617X1617/2erwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Y7Ga/1617X1617/3sanwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/L1GO/1617X1617/4siwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/Jcg8/1617X1617/5wuwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/sVlO/1617X1617/6liuwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/K9Jp/1617X1617/7qiwan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/O34i/1617X1617/8bawan.png',
+                'https://test.fukit.cn/autoupload/f/Ym-E4MSzWrJbYj6ohY9pPNiO_OyvX7mIgxFBfDMDErs/20260125/mnuE/1617X1617/9jiuwan.png',
+                'https://img.heliar.top/file/1773305145270_yitong.png',
+                'https://img.heliar.top/file/1773305133525_ertong.png',
+                'https://img.heliar.top/file/1773305134605_santong.png',
+                'https://img.heliar.top/file/1773305141315_sitong.png',
+                'https://img.heliar.top/file/1773305141030_wutong.png',
+                'https://img.heliar.top/file/1773305137550_liutong.png',
+                'https://img.heliar.top/file/1773305136133_qitong.png',
+                'https://img.heliar.top/file/1773305140201_batong.png',
+                'https://img.heliar.top/file/1773305136176_jiutong.png',
+                'https://img.heliar.top/file/1773305145895_1mei.png',
+                'https://img.heliar.top/file/1773305151176_1lan.png',
+                'https://img.heliar.top/file/1773305158334_1zhu.png',
+                'https://img.heliar.top/file/1773305142900_1ju.png',
+                'https://img.heliar.top/file/1773305141216_1chun.png',
+                'https://img.heliar.top/file/1773305159003_1xia.png',
+                'https://img.heliar.top/file/1773305144141_1qiu.png',
+                'https://img.heliar.top/file/1773305149387_1dongji.png'
+            ];
+
+            let mCtx, mCanvas, mWidth, mHeight;
+            let mClusters = [];
+            let mStars = [];
+            const targetClustersCount = 12;
+            let mMahjongImageData = [];
+            let mAnimationId = null;
+
+            function resizeMahjongCanvas() {
+                if (!mCanvas) return;
+                mWidth = window.innerWidth;
+                mHeight = window.innerHeight;
+                mCanvas.width = mWidth;
+                mCanvas.height = mHeight;
+                initMahjongStars();
+            }
+
+            function initMahjongStars() {
+                mStars = [];
+                const starCount = 200;
+                for (let i = 0; i < starCount; i++) {
+                    mStars.push({
+                        x: Math.random() * mWidth,
+                        y: Math.random() * mHeight,
+                        size: Math.random() * 1.2,
+                        opacity: Math.random(),
+                        speed: 0.005 + Math.random() * 0.01
+                    });
+                }
+            }
+
+            function drawMahjongStars() {
+                for (let s of mStars) {
+                    s.opacity += s.speed;
+                    if (s.opacity > 1 || s.opacity < 0.1) s.speed *= -1;
+                    mCtx.fillStyle = `rgba(255, 255, 255, ${s.opacity * 0.25})`;
+                    mCtx.beginPath();
+                    mCtx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+                    mCtx.fill();
+                }
+            }
+
+            class MahjongParticleCluster {
+                constructor(x, y, imageData) {
+                    this.x = x;
+                    this.y = y;
+                    this.vx = (Math.random() - 0.5) * 0.4;
+                    this.vy = (Math.random() - 0.5) * 0.4;
+                    this.imageData = imageData;
+                    this.radius = 45;
+                    this.life = 1;
+                    this.isDying = false;
+                    this.maxDist = 0;
+                    this.rotation = Math.random() * Math.PI * 2;
+                    this.rotationSpeed = (Math.random() - 0.5) * 0.003;
+                    this.driftOffset = Math.random() * 1000;
+                    this.particles = imageData.map(p => {
+                        const dist = Math.sqrt(p.x * p.x + p.y * p.y);
+                        if (dist > this.maxDist) this.maxDist = dist;
+                        return {
+                            ox: p.x, oy: p.y,
+                            x: x + p.x, y: y + p.y,
+                            r: p.r, g: p.g, b: p.b,
+                            vx: 0, vy: 0, alpha: 1,
+                            distRatio: dist
+                        };
+                    });
+                    for (let p of this.particles) p.distRatio /= (this.maxDist || 1);
+                }
+                update() {
+                    if (!this.isDying) {
+                        this.driftOffset += 0.005;
+                        const driftX = Math.sin(this.driftOffset) * 0.1;
+                        const driftY = Math.cos(this.driftOffset) * 0.1;
+                        this.x += (this.vx + driftX);
+                        this.y += (this.vy + driftY);
+                        this.rotation += this.rotationSpeed;
+                        if (this.x < this.radius) { this.vx = Math.abs(this.vx); this.x = this.radius; }
+                        else if (this.x > mWidth - this.radius) { this.vx = -Math.abs(this.vx); this.x = mWidth - this.radius; }
+                        if (this.y < this.radius) { this.vy = Math.abs(this.vy); this.y = this.radius; }
+                        else if (this.y > mHeight - this.radius) { this.vy = -Math.abs(this.vy); this.y = mHeight - this.radius; }
+                        const cos = Math.cos(this.rotation);
+                        const sin = Math.sin(this.rotation);
+                        for (let p of this.particles) {
+                            const rx = p.ox * cos - p.oy * sin;
+                            const ry = p.ox * sin + p.oy * cos;
+                            p.x = this.x + rx;
+                            p.y = this.y + ry;
+                        }
+                    } else {
+                        this.life -= 0.005;
+                        for (let p of this.particles) {
+                            p.x += p.vx;
+                            p.y += p.vy;
+                            p.vx *= 0.97;
+                            p.vy *= 0.97;
+                            p.alpha = this.life * (1 - p.distRatio * 0.65);
+                        }
+                    }
+                }
+                draw() {
+                    for (let p of this.particles) {
+                        const a = this.isDying ? p.alpha : this.life;
+                        if (a <= 0) continue;
+                        mCtx.fillStyle = `rgba(${p.r}, ${p.g}, ${p.b}, ${a})`;
+                        mCtx.fillRect(p.x, p.y, 1.4, 1.4);
+                    }
+                }
+                explode() {
+                    this.isDying = true;
+                    for (let p of this.particles) {
+                        const angle = Math.atan2(p.oy, p.ox) + (Math.random() - 0.5) * 0.5;
+                        const force = Math.random() * 1.8 + 0.4;
+                        p.vx = Math.cos(angle) * force;
+                        p.vy = Math.sin(angle) * force;
+                    }
+                }
+            }
+
+            function createMahjongCluster() {
+                if (mMahjongImageData.length === 0) return null;
+                const data = mMahjongImageData[Math.floor(Math.random() * mMahjongImageData.length)];
+                const margin = 120;
+                let x, y, tooClose;
+                let attempts = 0;
+                do {
+                    x = Math.random() * (mWidth - margin * 2) + margin;
+                    y = Math.random() * (mHeight - margin * 2) + margin;
+                    tooClose = mClusters.some(c => !c.isDying && Math.hypot(c.x - x, c.y - y) < 180);
+                    attempts++;
+                } while (tooClose && attempts < 10);
+                return new MahjongParticleCluster(x, y, data);
+            }
+
+            async function preloadMahjongImages() {
+                const promises = MAHJONG_IMAGE_URLS.map(url => new Promise((resolve) => {
+                    const img = new Image();
+                    img.crossOrigin = "anonymous";
+                    img.src = url;
+                    img.onload = () => {
+                        const tempCanvas = document.createElement('canvas');
+                        const tCtx = tempCanvas.getContext('2d');
+                        const size = 75;
+                        tempCanvas.width = size;
+                        tempCanvas.height = size * 1.35;
+                        tCtx.drawImage(img, 0, 0, tempCanvas.width, tempCanvas.height);
+                        const data = tCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height).data;
+                        const points = [];
+                        for (let y = 0; y < tempCanvas.height; y += 2) {
+                            for (let x = 0; x < tempCanvas.width; x += 2) {
+                                const idx = (y * tempCanvas.width + x) * 4;
+                                if (data[idx + 3] > 128) {
+                                    points.push({ x: x - tempCanvas.width / 2, y: y - tempCanvas.height / 2, r: data[idx], g: data[idx + 1], b: data[idx + 2] });
+                                }
+                            }
+                        }
+                        resolve(points);
+                    };
+                    img.onerror = () => resolve(null);
+                }));
+                const results = await Promise.all(promises);
+                mMahjongImageData = results.filter(r => r !== null);
+                if (mClusters.length === 0 && mMahjongImageData.length > 0) {
+                    for (let i = 0; i < targetClustersCount; i++) {
+                        const c = createMahjongCluster();
+                        if (c) mClusters.push(c);
+                    }
+                }
+            }
+
+            function applyMahjongPhysics() {
+                for (let i = 0; i < mClusters.length; i++) {
+                    for (let j = i + 1; j < mClusters.length; j++) {
+                        const c1 = mClusters[i];
+                        const c2 = mClusters[j];
+                        if (c1.isDying || c2.isDying) continue;
+                        const dx = c1.x - c2.x;
+                        const dy = c1.y - c2.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        const minDist = c1.radius + c2.radius;
+                        if (dist < minDist * 1.8) {
+                            const pushForce = 0.0005;
+                            const ax = (dx / dist) * pushForce;
+                            const ay = (dy / dist) * pushForce;
+                            c1.vx += ax; c1.vy += ay;
+                            c2.vx -= ax; c2.vy -= ay;
+                        }
+                        if (dist < minDist * 0.8) {
+                            c1.explode();
+                            c2.explode();
+                            setTimeout(() => {
+                                if (mClusters.filter(c => !c.isDying).length < targetClustersCount) {
+                                    const new1 = createMahjongCluster();
+                                    const new2 = createMahjongCluster();
+                                    if (new1) mClusters.push(new1);
+                                    if (new2) mClusters.push(new2);
+                                }
+                            }, 2500);
+                        }
+                    }
+                }
+            }
+
+            function mahjongAnimate() {
+                if (!mCtx || !mCanvas) return;
+                mCtx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+                mCtx.fillRect(0, 0, mWidth, mHeight);
+                drawMahjongStars();
+                applyMahjongPhysics();
+                mClusters = mClusters.filter(c => c.life > 0);
+                for (let c of mClusters) { c.update(); c.draw(); }
+                mAnimationId = requestAnimationFrame(mahjongAnimate);
+                window.__mahjongParticleAnimationId = mAnimationId;
+            }
+
+            function start() {
+                mCanvas = document.getElementById('mahjong-particle-bg');
+                if (!mCanvas) return;
+                mCtx = mCanvas.getContext('2d', { willReadFrequently: true });
+                resizeMahjongCanvas();
+                window.addEventListener('resize', resizeMahjongCanvas);
+                preloadMahjongImages().catch(() => {});
+                if (mAnimationId) cancelAnimationFrame(mAnimationId);
+                mAnimationId = requestAnimationFrame(mahjongAnimate);
+                window.__mahjongParticleAnimationId = mAnimationId;
+            }
+
+            start();
+        }
+
+        // ==================== 合并：模态框监听（原 `手势交互.html` 第三段脚本） ====================
+        function setupGuaModalParticleObserverOnce() {
+            if (window.__guaModalObserverInited) return;
+            window.__guaModalObserverInited = true;
+
+            const modal = document.getElementById('gua-modal');
+            if (!modal || !window.MutationObserver) return;
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mut) => {
+                    if (mut.attributeName === 'class') {
+                        const isHidden = modal.classList.contains('hidden');
+                        if (window.particleSystem) {
+                            // 模态框显示 => 关闭山水粒子；模态框隐藏 => 显示山水粒子
+                            window.particleSystem.visible = isHidden;
+                        }
+                    }
+                });
+            });
+            observer.observe(modal, { attributes: true });
+            window.__guaModalObserver = observer;
+        }
+    </script>
+</body>
+</html>
